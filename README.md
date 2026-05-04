@@ -3,15 +3,18 @@
 This repository provides a patch for the **IterationRP Alpha 0.8.18** shader pack. Due to licensing, the original shader code cannot be distributed directly. Users must own the original shader zip to apply this edit.
 
 ## Changes in this Edit
-- **Cloud Mood**: Set to Manual by default.
-- **PT IRC SPP**: Adjusted to 1.
-- **Cloud Quality**: Optimized to 2.0.
-- **Cloud Base Noise Scale**: Refined to 0.001.
-- **Cloud Godray Brightness**: Increased to 1.5.
-- **Cloud Lightning**: Adjusted to 0.5.
-- **Cloud Probabilities**: Scattered (0.2) and Broken (0.5) adjusted for better variety.
-- **Weather Network**: Disabled by default.
-- **Film Grain**: Disabled by default.
+
+Film Grain,
+Dynamic Cloud system with diffrent weathers,
+Rainbows,
+Flares (both Anamorphic and Entopic),
+Time Grade,
+Custom LUTs,
+SSS edits,
+Cloud Godrays - similar to fog godrays but implemented to clouds so u get nice highlights,
+Cloud Shadows
+Reworked Godrays
+And some tweaks to overall look of clouds (bettter scatered clouds, better planar clouds, bigger variations and randomness)
 
 ## How to Apply the Patch
 
