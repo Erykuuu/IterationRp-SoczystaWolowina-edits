@@ -1,37 +1,23 @@
 # IterationRP Edit - V1.03 Patch
 
-This repository provides a comprehensive patch for the **IterationRP Alpha 0.8.18** shader pack. This is a "whole edit" that overhaul many aspects of the shader, from cloud logic to post-processing and performance tuning.
+This repository provides a comprehensive patch for the **IterationRP Alpha 0.8.18** shader pack. Due to licensing, the original shader code cannot be distributed directly. Users must own the original shader zip to apply this edit.
 
-Due to licensing, the original shader code cannot be distributed directly. Users must own the original shader zip to apply this edit.
+## 🌟 Key Features & Changes
 
-## Key Changes and Improvements
-
-### 🌤️ Atmosphere & Clouds
-- **New Weather Engine**: Fully custom logic for transition and weather variety.
-- **Advanced Cloud Mood System**: Optimized for manual control with refined mood influence.
-- **Planar & Volumetric Cloud Overhaul**: Significant rewrites to `NUBIS.glsl` and `PlanarClouds.glsl` for better visuals and performance.
-- **Improved Cloud Shadows**: Fixed Slant and range logic in `CloudShadow.glsl`.
-- **New Rainbow System**: Added a high-quality atmospheric rainbow implementation.
-
-### 🎨 Visuals & Post-Processing
-- **Massive Final Pass Edit**: Large-scale optimizations and visual tweaks in `Final_FS.glsl`.
-- **Custom LUT Support**: Added 4 distinct LUT slots for color grading with identity textures included.
-- **Improved Temporal Dithering**: Refined noise handling for smoother visuals.
-- **Volumetric Fog Tweaks**: Better height and density falloff transitions.
-
-### ⚙️ Optimization & Defaults
-- **PT IRC Optimized**: Sample per frame (SPP) set to 1 for better performance.
-- **Cloud Quality Tuning**: Standardized to 2.0 for the best balance of speed and clarity.
-- **Base Noise Scaling**: Adjusted to 0.001 for finer cloud details.
-- **Disabled Grain/Noise**: Removed Film Grain and predictive weather networking by default for a cleaner look.
-
-### 🖥️ User Interface
-- **Expanded Menu**: 100+ lines of changes to `shaders.properties` to expose new controls.
-- **Localized Labels**: Fully updated `en_us.lang` with descriptive labels for new features.
+- **Dynamic Cloud System** with different weathers
+- **Reworked Godrays** and **Cloud Shadows**
+- **Cloud Godrays** (similar to fog godrays but implemented into clouds for beautiful highlights)
+- **Tweaked Cloud Visuals** (Better scattered/planar clouds, more variations and randomness)
+- **Flares** (Both Anamorphic and Entopic)
+- **Rainbows**
+- **Time Grade**
+- **Custom LUTs**
+- **Film Grain based on RGB noise**
+- **SSS Edits**
 
 ---
 
-## How to Apply the Patch
+## 🛠️ How to Apply the Patch
 
 ### Requirements
 - Python 3.x installed.
