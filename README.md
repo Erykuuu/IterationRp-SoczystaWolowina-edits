@@ -1,4 +1,7 @@
-# IterationRP Edit - V1.03 Patch
+# IterationRP Edit - V1.04 Patch
+Aditions:
+- **Dynamic Biome color grading**
+- **Bokeh styles for Depth of field**
 
 This repository provides a comprehensive patch for the **IterationRP Alpha 0.8.18** shader pack. Due to licensing, the original shader code cannot be distributed directly. Users must own the original shader zip to apply this edit.
 
@@ -14,6 +17,9 @@ This repository provides a comprehensive patch for the **IterationRP Alpha 0.8.1
 - **Custom LUTs**
 - **Film Grain based on RGB noise**
 - **SSS Edits**
+- **Dynamic Biome color grading**
+- **Bokeh styles for Depth of field**
+
 
 ---
 
