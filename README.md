@@ -43,5 +43,5 @@ python shader-patch.py "iterationRP Alpha 0.8.18.zip" "ITRPeditV1.04.diff" "ITRP
 5. The patched shader pack will be generated as `ITRPedit_V1.04.zip`. Move it to your Minecraft `shaderpacks` folder.
 
 ## Credits
-- Original Shader: [IterationRP](https://github.com/Tahnass/IterationRP) by Tahnass.
+- Original Shader: [IterationRP](https://afdian.com/a/tahnass) by Tahnass.
 - Patching Script based on: [huj31415/iterationrp-patches](https://github.com/huj31415/iterationrp-patches)
