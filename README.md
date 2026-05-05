@@ -37,10 +37,10 @@ This repository provides a comprehensive patch for the **IterationRP Alpha 0.8.1
 4. Run the following command:
 
 ```bash
-python shader-patch.py "iterationRP Alpha 0.8.18.zip" "ITRPeditV1.03.diff" "ITRPedit_V1.03.zip"
+python shader-patch.py "iterationRP Alpha 0.8.18.zip" "ITRPeditV1.04.diff" "ITRPedit_V1.04.zip"
 ```
 
-5. The patched shader pack will be generated as `ITRPedit_V1.03.zip`. Move it to your Minecraft `shaderpacks` folder.
+5. The patched shader pack will be generated as `ITRPedit_V1.04.zip`. Move it to your Minecraft `shaderpacks` folder.
 
 ## Credits
 - Original Shader: [IterationRP](https://github.com/Tahnass/IterationRP) by Tahnass.
