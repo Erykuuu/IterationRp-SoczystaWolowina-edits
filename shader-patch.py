@@ -32,7 +32,7 @@ def create_zip(directory, zip_path):
 def apply_patch(directory, patch_file):
     # Use git apply as it is more likely to be available on Windows/Linux with git installed
     result = subprocess.run(
-        ["git", "apply", "-p2", "--ignore-space-change", "--ignore-whitespace", str(patch_file)],
+        ["git", "apply", "-p1", "--ignore-space-change", "--ignore-whitespace", str(patch_file)],
         cwd=directory,
         capture_output=True,
         text=True
