@@ -8,7 +8,8 @@ This repository provides a patch for the **IterationRP Alpha 0.8.18** shader pac
 - **Atmospheric Storm Darkening**: Re-tuned cloud density and light absorption to provide a cinematic "blackout" effect during thunderstorms.
 - **Cloud Animation Toggle**: New setting in the Volumetric Clouds menu to switch between **Frame Time** (continuous movement) and **World Time** (movement tied to in-game ticks).
 - **Time Source Stability**: Fixed flickering and precision artifacts when using world-time synchronized clouds.
-
+- CLOUDS ARE NO LONGER CLIPING THRU LODS AND THEY ARE FULLY FLYABLE IN OR WHATEVER!!!!!!
+  
 ## Previous Changes (V1.04)
 Dynamic Cloud System with different weathers
 Reworked Godrays and Cloud Shadows
