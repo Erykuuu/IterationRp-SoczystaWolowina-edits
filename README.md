@@ -4,11 +4,10 @@ This repository provides a patch for the **IterationRP Alpha 0.8.18** shader pac
 
 ## New in V1.10
 - **Aurora Borealis System**: High-fidelity, performance-optimized dynamic aurora with organic movement.
-- **Aurora Settings**: Dedicated §b§lAURORA tab in the menu with controls for master toggle, probability (frequency), and biome restriction (Snowy/Desert).
+- **Aurora Settings**: Dedicated AURORA tab in the menu with controls for master toggle, probability (frequency), and biome restriction (Snowy/Desert).
 - **Atmospheric Storm Darkening**: Re-tuned cloud density and light absorption to provide a cinematic "blackout" effect during thunderstorms.
 - **Cloud Animation Toggle**: New setting in the Volumetric Clouds menu to switch between **Frame Time** (continuous movement) and **World Time** (movement tied to in-game ticks).
 - **Time Source Stability**: Fixed flickering and precision artifacts when using world-time synchronized clouds.
-- **Wind Speed Normalization**: Balanced cloud drifting speed across both animation modes.
 
 ## Previous Changes (V1.04)
 Dynamic Cloud System with different weathers
