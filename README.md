@@ -1,7 +1,9 @@
 # IterationRP Edit - V1.10 Patch
 
 This repository provides a patch for the **IterationRP Alpha 0.8.18** shader pack. Due to licensing, the original shader code cannot be distributed directly. Users must own the original shader zip to apply this edit.
-
+## New in V1.11
+- **New erosion logic
+- **Reworked Cloud look (if u dont like it use V1.10)
 ## New in V1.10
 - **Aurora Borealis System**: High-fidelity, performance-optimized dynamic aurora with organic movement.
 - **Aurora Settings**: Dedicated AURORA tab in the menu with controls for master toggle, probability (frequency), and biome restriction (Snowy/Desert).
@@ -40,8 +42,12 @@ Bokeh styles for Depth of field
 ```bash
 python shader-patch.py "iterationRP Alpha 0.8.18.zip" "ITRPeditV1.10.diff" "ITRPedit_V1.10.zip"
 ```
+or for the V1.11
+```bash
+python shader-patch.py "iterationRP Alpha 0.8.18.zip" "ITRPeditV1.11.diff" "ITRPedit_V1.11.zip"
+```
 
-5. The patched shader pack will be generated as `ITRPedit_V1.10.zip`. You can now move this into your Minecraft `shaderpacks` folder.
+5. The patched shader pack will be generated as `ITRPedit_V1.10.zip`/`ITRPedit_V1.11.zip`. You can now move this into your Minecraft `shaderpacks` folder.
 
 ## Credits
 - Original Shader: [IterationRP](https://github.com/Tahnass/IterationRP)
