@@ -438,21 +438,10 @@ index 15b1622..018a1b5 100644
  	vec2 renderCoord = (vec2(renderTexel) + 0.5) * fsrPixelSize;
  	ReconstructPrevDepth(renderCoord, dilatedDepth, dilatedVelocity);
 diff --git a/shaders/Lib/GbufferData.glsl b/shaders/Lib/GbufferData.glsl
-index da40a8c..45b8b21 100644
+index da40a8c..e2d541f 100644
 --- a/shaders/Lib/GbufferData.glsl
 +++ b/shaders/Lib/GbufferData.glsl
-@@ -133,8 +133,8 @@ GbufferData GetGbufferDataSoild(){
- GbufferData GetGbufferDataTranslucent(out bool isSmooth){
- 	GbufferData data;
- 
--	vec4 gbuffer5 = texelFetch(FBTEX_GTRANS_DATA, texelCoord, 0);
--	vec4 gbuffer6 = texelFetch(FBTEX_GTRANS_NORMAL, texelCoord, 0);
-+	vec4 gbuffer5 = texelFetch(FBTEX_GSOLID_DATA, texelCoord, 0);
-+	vec4 gbuffer6 = texelFetch(FBTEX_GSOLID_NORMAL, texelCoord, 0);
- 
- 	data.worldNormal 	= DecodeNormal(gbuffer6.xy);
- 	data.vertexNormal 	= DecodeNormal(gbuffer6.zw);
-@@ -175,6 +175,11 @@ GbufferData GetGbufferDataTranslucent(out bool isSmooth){
+@@ -175,6 +175,12 @@ GbufferData GetGbufferDataTranslucent(out bool isSmooth){
  		data.albedoAlpha = specTex.a;
  		data.material = material_air;
  
@@ -460,27 +449,21 @@ index da40a8c..45b8b21 100644
 +		data.albedo = GammaToLinear(specTex.rgb);
 +		data.albedoAlpha = 1.0;
 +		data.material = MaterialFromTex(specTex);
++		isSmooth = data.material.roughness < 2e-5;
 +
  	}else{
  		data.albedo = GammaToLinear(texelFetch(FBTEX_ALBEDO, texelCoord, 0).rgb);
  		data.albedoAlpha = 1.0;
-@@ -198,15 +203,10 @@ GbufferData GetGbufferDataTranslucent(out bool isSmooth){
- 	return data;
+@@ -206,6 +212,9 @@ float GetTransMaterialID(ivec2 coord){
+ 	return Unpack2xU8_ID_Y_from_U16(texelFetch(FBTEX_GTRANS_DATA, coord, 0).z);
  }
  
--float GetSolidMaterialID(ivec2 coord){
 +float GetMaterialID(ivec2 coord){
- 	return Unpack2xU8_ID_Y_from_U16(texelFetch(FBTEX_GSOLID_DATA, coord, 0).z);
- }
++	return GetSolidMaterialID(coord);
++}
  
--float GetTransMaterialID(ivec2 coord){
--	return Unpack2xU8_ID_Y_from_U16(texelFetch(FBTEX_GTRANS_DATA, coord, 0).z);
--}
--
--
  struct MaterialMask{
  	float sky;
- 	float grass;
 diff --git a/shaders/Lib/IndividualFunctions/Aurora.glsl b/shaders/Lib/IndividualFunctions/Aurora.glsl
 new file mode 100644
 index 0000000..994a4a0
@@ -4660,7 +4643,7 @@ index 0bc66e5..e3844ed 100644
  	}
  }
 diff --git a/shaders/Lib/Programs/Composite/TAA.glsl b/shaders/Lib/Programs/Composite/TAA.glsl
-index b71f97c..30fd252 100644
+index b71f97c..c4b5ff7 100644
 --- a/shaders/Lib/Programs/Composite/TAA.glsl
 +++ b/shaders/Lib/Programs/Composite/TAA.glsl
 @@ -4,8 +4,8 @@
@@ -4812,7 +4795,7 @@ index b71f97c..30fd252 100644
  void main(){
  	#ifdef TAA
 -		float materialIDs = GetTransMaterialID(texelCoord);
-+		float materialIDs = GetMaterialID(texelCoord);
++	float materialIDs = GetTransMaterialID(texelCoord);
  
  		vec4 taa = vec4(0.0);
  
@@ -4880,7 +4863,7 @@ index b71f97c..30fd252 100644
 +	framebuffer3 = taa;
  }
 diff --git a/shaders/Lib/Programs/Composite/Translucent_FS.glsl b/shaders/Lib/Programs/Composite/Translucent_FS.glsl
-index 7a5fa55..e9fdc92 100644
+index 7a5fa55..46ec5b5 100644
 --- a/shaders/Lib/Programs/Composite/Translucent_FS.glsl
 +++ b/shaders/Lib/Programs/Composite/Translucent_FS.glsl
 @@ -11,13 +11,13 @@ uniform sampler2D shadowcolor1;
@@ -4908,14 +4891,37 @@ index 7a5fa55..e9fdc92 100644
  #include "/Lib/PathTracing/Tracer/TracingUtilities.glsl"
  
  #ifdef PT_IRC
-@@ -180,11 +181,11 @@ vec2 GlassRefraction(vec3 normal, vec3 vertexNormal, vec3 viewPos, vec3 viewDir,
- 		}else{
- 			refractCoord = texCoord;
- 			
--			color = texelFetch(FBTEX_MAIN_OUTPUT, texelCoord, 0).rgb;
--			waterData = texelFetch(FBTEX_GWATER, texelCoord, 0);
-+			color = texelFetch(colortex1, texelCoord, 0).rgb;
-+			waterData = texelFetch(colortex7, texelCoord, 0);
+@@ -140,23 +141,23 @@ vec2 GlassRefraction(vec3 normal, vec3 vertexNormal, vec3 viewPos, vec3 viewDir,
+ 
+ 
+ 		#if defined SUPER_RESOLUTION || defined CUSTOM_RENDER_RESOLUTION
+-			float refractDepth = textureLod(depthtexS, refractCoord * fsrRenderScale, 0.0).x;
++			float refractDepth = textureLod(depthtex1, refractCoord * fsrRenderScale, 0.0).x;
+ 		#else
+-			float refractDepth = textureLod(depthtexS, refractCoord, 0.0).x;
++			float refractDepth = textureLod(depthtex1, refractCoord, 0.0).x;
+ 		#endif
+ 
+ 		if (refractDepth > depth && saturate(refractCoord) == refractCoord){
+ 			#ifdef SUPER_RESOLUTION
+ 				vec2 sampleCoord = refractCoord * fsrRenderScale;
+ 				color = textureLod(FBTEX_MAIN_OUTPUT, sampleCoord, 0.0).rgb;
+-				opaqueDepth = textureLod(depthtexS, sampleCoord, 0.0).x;
++				opaqueDepth = textureLod(depthtex1, sampleCoord, 0.0).x;
+ 				
+ 			#else
+ 				color = textureLod(FBTEX_MAIN_OUTPUT, refractCoord, 0.0).rgb;
+ 				#ifdef CUSTOM_RENDER_RESOLUTION
+-					opaqueDepth = textureLod(depthtexS, refractCoord * fsrRenderScale, 0.0).x;
++					opaqueDepth = textureLod(depthtex1, refractCoord * fsrRenderScale, 0.0).x;
+ 				#else
+-					opaqueDepth = textureLod(depthtexS, refractCoord, 0.0).x;
++					opaqueDepth = textureLod(depthtex1, refractCoord, 0.0).x;
+ 				#endif
+ 			#endif
+ 
+@@ -184,7 +185,7 @@ vec2 GlassRefraction(vec3 normal, vec3 vertexNormal, vec3 viewPos, vec3 viewDir,
+ 			waterData = texelFetch(FBTEX_GWATER, texelCoord, 0);
  
  			//#ifdef DIMENSION_NETHER
 -			//	depth = texelFetch(depthtexS, texelCoord, 0).x;
@@ -4923,17 +4929,6 @@ index 7a5fa55..e9fdc92 100644
  			//#endif
  
  		}
-@@ -192,8 +193,8 @@ vec2 GlassRefraction(vec3 normal, vec3 vertexNormal, vec3 viewPos, vec3 viewDir,
- 
- 
- 	}else{
--		color = texelFetch(FBTEX_MAIN_OUTPUT, texelCoord, 0).rgb;
--		waterData = texelFetch(FBTEX_GWATER, texelCoord, 0);
-+		color = texelFetch(colortex1, texelCoord, 0).rgb;
-+		waterData = texelFetch(colortex7, texelCoord, 0);
- 	}
- 
- 	#ifdef DIMENSION_NETHER
 @@ -215,7 +216,7 @@ vec2 GlassRefraction(vec3 normal, vec3 vertexNormal, vec3 viewPos, vec3 viewDir,
  
  
@@ -4970,7 +4965,7 @@ index 7a5fa55..e9fdc92 100644
  			#ifdef SUNLIGHT_LEAK_FIX
  				sunlight *= saturate(lightmap.g * 1e5 + float(isEyeInWater == 1));
  			#endif
-@@ -538,7 +539,7 @@ void ParticleLighting(inout vec3 color, vec3 worldPos, float waterDist, vec3 alb
+@@ -538,13 +539,17 @@ void ParticleLighting(inout vec3 color, vec3 worldPos, float waterDist, vec3 alb
  /////////////////////////MAIN//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
  void main(){
  	float depth = texelFetch(depthtex0, texelCoord, 0).x;
@@ -4979,7 +4974,17 @@ index 7a5fa55..e9fdc92 100644
  	float refractDepth = opaqueDepth;
  
  	bool isSmooth = false;
-@@ -598,9 +599,9 @@ void main(){
+ 	GbufferData gbuffer 			= GetGbufferDataTranslucent(isSmooth);
+ 	MaterialMask materialMask 		= CalculateMasks(gbuffer.materialID);
+ 
++	if (isSmooth){
++		gbuffer.material.roughness = 0.0;
++	}
++
+ 	vec3 viewPos 					= ViewPos_From_ScreenPos(texCoord, depth);
+ 	vec3 viewPosOpaque 				= ViewPos_From_ScreenPos(texCoord, opaqueDepth);
+ 
+@@ -598,9 +603,9 @@ void main(){
  			vec2 velocity = ScreenVelocity(velocityReferenceDepth, materialMask);
  		#endif
  		#if SR_ENABLE == 1
@@ -4991,14 +4996,15 @@ index 7a5fa55..e9fdc92 100644
  		#endif
  	#endif
  
-@@ -819,5 +820,5 @@ void main(){
+@@ -819,5 +824,5 @@ void main(){
  	//if (isSmooth) color = vec3(1.0, 0.0, 0.0);
  
  
 -	imageStore(FBIMG_SST_TEMPORAL, texelCoord, vec4(color, referenceDepth));
-+	imageStore(colorimg4, texelCoord, vec4(color, referenceDepth));
- }
+-}
 \ No newline at end of file
++	imageStore(colorimg4, texelCoord, vec4(color, referenceDepth));
++}
 diff --git a/shaders/Lib/Programs/Composite/Volumetric_FS.glsl b/shaders/Lib/Programs/Composite/Volumetric_FS.glsl
 index 8964b31..6b4e367 100644
 --- a/shaders/Lib/Programs/Composite/Volumetric_FS.glsl
@@ -7271,7 +7277,7 @@ index 52a01d4..20be5c3 100644
  	if	(hitWorldPos.w > 0.0){
  		#ifdef DIMENSION_END
 diff --git a/shaders/Lib/Settings.glsl b/shaders/Lib/Settings.glsl
-index 7de12f9..3012c86 100644
+index 7de12f9..1a55668 100644
 --- a/shaders/Lib/Settings.glsl
 +++ b/shaders/Lib/Settings.glsl
 @@ -1,53 +1,31 @@
@@ -7285,8 +7291,8 @@ index 7de12f9..3012c86 100644
 +	#define FBTEX_ALBEDO 			colortex0
 +	#define FBTEX_GSOLID_DATA 		colortex5
 +	#define FBTEX_GSOLID_NORMAL		colortex6
-+	#define FBTEX_GTRANS_DATA 		colortex7
-+	#define FBTEX_GTRANS_NORMAL 	colortex4 // Assuming colortex4 is used for translucent normals in some passes, or mapping to available
++	#define FBTEX_GTRANS_DATA 		colortex5
++	#define FBTEX_GTRANS_NORMAL 	colortex6
 +	#define FBTEX_GWATER 			colortex7
 +	#define FBTEX_MAIN_OUTPUT 		colortex1
 +	#define FBTEX_MAIN_TEMPORAL 	colortex1 // User uses colortex1 for main
@@ -7318,14 +7324,15 @@ index 7de12f9..3012c86 100644
 -	#define FBIMG_GSOLID_DATA 		colorimg1
 -	#define FBIMG_GSOLID_NORMAL		colorimg2
 -	#define FBIMG_GTRANS_DATA 		colorimg3
-+	#define FBIMG_GSOLID_DATA 		colorimg5
-+	#define FBIMG_GSOLID_NORMAL		colorimg6
-+	#define FBIMG_GTRANS_DATA 		colorimg7
- 	#define FBIMG_GTRANS_NORMAL 	colorimg4
+-	#define FBIMG_GTRANS_NORMAL 	colorimg4
 -	#define FBIMG_GWATER 			colorimg5
 -
 -	#define FBIMG_MAIN_OUTPUT 		colorimg6
 -	#define FBIMG_MAIN_TEMPORAL 	colorimg7
++	#define FBIMG_GSOLID_DATA 		colorimg5
++	#define FBIMG_GSOLID_NORMAL		colorimg6
++	#define FBIMG_GTRANS_DATA 		colorimg5
++	#define FBIMG_GTRANS_NORMAL 	colorimg6
 +	#define FBIMG_GWATER 			colorimg7
 +	#define FBIMG_MAIN_OUTPUT 		colorimg1
 +	#define FBIMG_MAIN_TEMPORAL 	colorimg1
