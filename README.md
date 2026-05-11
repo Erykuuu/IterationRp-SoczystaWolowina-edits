@@ -4,6 +4,7 @@ This repository provides a patch for the **IterationRP Alpha 0.8.18** shader pac
 ## New in V1.11
 - **new deafult options so dont use old, it might look bad**
 - **reworked cloud erosion (cloud scattering) and Cloud look (if u dont like it use V1.10)**
+- **added sunset exposure toggle for deafult exposure behaviour during sunset**
 ## New in V1.10
 - **Aurora Borealis System**: High-fidelity, performance-optimized dynamic aurora with organic movement.
 - **Aurora Settings**: Dedicated AURORA tab in the menu with controls for master toggle, probability (frequency), and biome restriction (Snowy/Desert).
