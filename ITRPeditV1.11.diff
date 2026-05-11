@@ -1732,20 +1732,22 @@ index 2e5c796..679bbb6 100644
  			vec3 colorMoonlight;
  			vec3 colorSunSkylight;
 diff --git a/shaders/Lib/Programs/Composite/Exposure_CS.glsl b/shaders/Lib/Programs/Composite/Exposure_CS.glsl
-index f475d19..813085c 100644
+index f475d19..8cf982c 100644
 --- a/shaders/Lib/Programs/Composite/Exposure_CS.glsl
 +++ b/shaders/Lib/Programs/Composite/Exposure_CS.glsl
-@@ -29,13 +29,20 @@ float GetExposureValue(float luminance){
- 	#ifdef MANUAL_EXPOSURE
+@@ -30,12 +30,25 @@ float GetExposureValue(float luminance){
  		return 1.5e5 * exp2(-EV_VALUE);
  	#else
--		float aeCurve = AE_CURVE;
-+		float sunsetMask = 0.0;
-+		#ifdef DIMENSION_OVERWORLD
-+			sunsetMask = smoothstep(11500.0, 11800.0, float(worldTime)) * (1.0 - smoothstep(12700.0, 13000.0, float(worldTime)));
+ 		float aeCurve = AE_CURVE;
++		#ifdef SUNSET_EXPOSURE
++			float sunsetMask = 0.0;
++			#ifdef DIMENSION_OVERWORLD
++				sunsetMask = smoothstep(11500.0, 11800.0, float(worldTime)) * (1.0 - smoothstep(12700.0, 13000.0, float(worldTime)));
++			#endif
++
++			aeCurve = mix(AE_CURVE, 0.95, sunsetMask); // Sharper compensation during sunset
 +		#endif
 +
-+		float aeCurve = mix(AE_CURVE, 0.95, sunsetMask); // Sharper compensation during sunset
  		#ifndef DISABLE_NIGHTVISION
  			aeCurve = mix(aeCurve, saturate(aeCurve * 1.2), nightVision);
  		#endif
@@ -1753,23 +1755,27 @@ index f475d19..813085c 100644
  		#ifndef DIMENSION_NETHER
 -			aeCurve *= remapSaturate(luminance, 2.0, 1.0) * 0.6 + 0.4;
 +			float clampAmount = remapSaturate(luminance, 2.0, 1.0) * 0.6 + 0.4;
-+			clampAmount = mix(clampAmount, 1.0, sunsetMask); // Relax clamp for full compensation
++			#ifdef SUNSET_EXPOSURE
++				clampAmount = mix(clampAmount, 1.0, sunsetMask); // Relax clamp for full compensation
++			#endif
 +			aeCurve *= clampAmount;
  		#endif
  		#endif
  		#ifdef DIMENSION_END
-@@ -190,7 +197,16 @@ void main(){
+@@ -190,7 +203,18 @@ void main(){
  			float prevAvgExposure = log2(texelFetch(pixelData2D, ivec2(PIXELDATA_EXPOSURE, 0), 0).x);
  			#ifdef IS_IRIS
  				float frameTimeFixed = frameTime + step(frameCounter, 20) * 100.0;
 -				float exposureTime = saturate(frameTimeFixed * (2.0 / EXPOSURE_TIME));
 +				
 +				float targetExposureTime = EXPOSURE_TIME;
-+				#ifdef DIMENSION_OVERWORLD
-+					// Slow down exposure during sunset (11500 - 13000 ticks)
-+					// This prevents rapid darkening when looking at the sun.
-+					float sunsetMask = smoothstep(11500.0, 11800.0, float(worldTime)) * (1.0 - smoothstep(12700.0, 13000.0, float(worldTime)));
-+					targetExposureTime = mix(targetExposureTime, 4.0, sunsetMask);
++				#ifdef SUNSET_EXPOSURE
++					#ifdef DIMENSION_OVERWORLD
++						// Slow down exposure during sunset (11500 - 13000 ticks)
++						// This prevents rapid darkening when looking at the sun.
++						float sunsetMask = smoothstep(11500.0, 11800.0, float(worldTime)) * (1.0 - smoothstep(12700.0, 13000.0, float(worldTime)));
++						targetExposureTime = mix(targetExposureTime, 4.0, sunsetMask);
++					#endif
 +				#endif
 +
 +				float exposureTime = saturate(frameTimeFixed * (2.0 / targetExposureTime));
@@ -2105,7 +2111,7 @@ index 0000000..5aa04ae
 @@ -0,0 +1 @@
 +texture.noisetex=texture/noise.png
 diff --git a/shaders/Lib/Programs/Final_FS.glsl b/shaders/Lib/Programs/Final_FS.glsl
-index eb28541..98eb020 100644
+index eb28541..c81f2cc 100644
 --- a/shaders/Lib/Programs/Final_FS.glsl
 +++ b/shaders/Lib/Programs/Final_FS.glsl
 @@ -4,6 +4,7 @@
@@ -2396,7 +2402,7 @@ index eb28541..98eb020 100644
  	{	
  		vec3 highlight = color * (5.0 / 3.0) - (2.0 / 3.0);
  		highlight = saturate(highlight * highlight * (0.6 - highlight * 0.6));
-@@ -450,42 +704,150 @@ vec3 ColorGrading(vec3 color){
+@@ -450,42 +704,154 @@ vec3 ColorGrading(vec3 color){
  		shadow = saturate(shadow * shadow * (0.6 - shadow * 0.6));
  		shadow *= saturate(6e9 - color * 1e10);
  
@@ -2441,7 +2447,11 @@ index eb28541..98eb020 100644
 -
 -	color = saturate(pow(color, vec3(1.0 / GAMMA)));
 +	color = mix(color, vec3(luminance), 1.0 - SATURATION);
-+	color = pow(max(color, 0.0), vec3(1.0 / GAMMA));
++	#ifdef SUNSET_EXPOSURE
++		color = pow(max(color, 0.0), vec3(1.0 / GAMMA));
++	#else
++		color = saturate(pow(saturate(color), vec3(1.0 / GAMMA)));
++	#endif
  
  	return color;
  }
@@ -2565,7 +2575,7 @@ index eb28541..98eb020 100644
  /*
  #define NORM2SNORM(value) (value * 2.0 - 1.0)
  #define SNORM2NORM(value) (value * 0.5 + 0.5)
-@@ -536,6 +898,10 @@ void main(){
+@@ -536,6 +902,10 @@ void main(){
  			color = MergeBloom(color, 1.0 - data1.a);
  		#endif
  
@@ -2576,23 +2586,28 @@ index eb28541..98eb020 100644
  		#ifdef VIGNETTE
  			color *= Vignette(texCoord, VIGNETTE_FALLOFF, VIGNETTE_ROUNDNESS);
  		#endif
-@@ -544,12 +910,23 @@ void main(){
+@@ -544,12 +914,28 @@ void main(){
  
  		color = TONEMAP_OPERATOR(color);
  
 -		color = saturate(color);
 +		#if defined ADVANCED_COLOR || defined TIME_AWARE_GRADING || defined BIOME_AWARE_GRADING
 +			float luminance = Luminance(color);
- 
--		#ifdef ADVANCED_COLOR
--			color = ColorGrading(color);
++
 +			#ifdef ADVANCED_COLOR
 +				color = ColorGrading(color, luminance);
-+				luminance = Luminance(color); // Update luminance for the next stages
++				#ifdef SUNSET_EXPOSURE
++					luminance = Luminance(color); // Update luminance for the next stages
++				#else
++					color = saturate(color);
++					luminance = saturate(Luminance(color));
++				#endif
 +			#endif
 +
 +			color = ApplyTimeAwareGrading(color, luminance);
-+
+ 
+-		#ifdef ADVANCED_COLOR
+-			color = ColorGrading(color);
 +			#ifdef BIOME_AWARE_GRADING
 +				color = ApplyBiomeColorGrading(color, luminance);
 +			#endif
@@ -2603,7 +2618,7 @@ index eb28541..98eb020 100644
  		#ifdef HAS_COLORWHEEL
  			#ifdef SUPER_RESOLUTION
  				ivec2 tcoord = ivec2(texCoord * UNIFORM_SCREEN_SIZE);
-@@ -756,6 +1133,65 @@ void FinalDither(inout vec3 color){
+@@ -756,6 +1142,65 @@ void FinalDither(inout vec3 color){
  	color = saturate(color);
  }
  
@@ -2669,7 +2684,7 @@ index eb28541..98eb020 100644
  uniform sampler2D shadowtex0;
  uniform sampler2D shadowtex1;
  uniform sampler2D shadowcolor0;
-@@ -838,7 +1274,10 @@ void main(){
+@@ -838,7 +1283,10 @@ void main(){
  
  	FinalDither(color);
  
@@ -2682,7 +2697,7 @@ index eb28541..98eb020 100644
  #if 0
  	const vec2 size = vec2(900, 512);
 diff --git a/shaders/Lib/Settings.glsl b/shaders/Lib/Settings.glsl
-index 39eddc2..ffabd5e 100644
+index 39eddc2..5371be1 100644
 --- a/shaders/Lib/Settings.glsl
 +++ b/shaders/Lib/Settings.glsl
 @@ -1,4 +1,5 @@
@@ -3043,7 +3058,7 @@ index 39eddc2..ffabd5e 100644
  //TAA-----------------------------------
  	#define TAA
  	#define TAA_BLENDWEIGHT 	0.97 // [0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99]
-@@ -586,26 +631,27 @@ const float monocleFix = 0.0 / 0.0;
+@@ -586,28 +631,30 @@ const float monocleFix = 0.0 / 0.0;
    //#define TAA_SUBPIXEL_SHARPNING
  
  //DOF-----------------------------------
@@ -3074,8 +3089,11 @@ index 39eddc2..ffabd5e 100644
 +	#define DISABLE_HAND_DOF
  
  //Exposure------------------------------
++  //#define SUNSET_EXPOSURE
    //#define MANUAL_EXPOSURE
-@@ -616,40 +662,78 @@ const float monocleFix = 0.0 / 0.0;
+ 	#define EV_VALUE 	14.0 	// [0.0 0.33 0.67 1.0 1.33 1.67 2.0 2.33 2.67 3.0 3.33 3.67 4.0 4.33 4.67 5.0 5.33 5.67 6.0 6.33 6.67 7.0 7.33 7.67 8.0 8.33 8.67 9.0 9.33 9.67 10.0 10.33 10.67 11.0 11.33 11.67 12.0 12.33 12.67 13.0 13.33 13.67 14.0 14.33 14.67 15.0 15.33 15.67 16.0 16.33 16.67 17.0 17.33 17.67 18.0 18.33 18.67 19.0 19.33 19.67 20.0]
+ 	#define AE_OFFSET 	0.0 	// [-5.0 -4.67 -4.33 -4.0 -3.67 -3.33 -3.0 -2.67 -2.33 -2.0 -1.67 -1.33 -1.0 -0.67 -0.33 0.0 0.33 0.67 1.0 1.33 1.67 2.0 2.33 2.67 3.0 3.33 3.67 4.0 4.33 4.67 5.0]
+@@ -616,40 +663,78 @@ const float monocleFix = 0.0 / 0.0;
  	#define AE_CLAMP
  	#define LUMINANCE_WEIGHT_MODE 		2 	// [0 1 2 3 4]
  	#define LUMINANCE_WEIGHT_STRENGTH 	0.7 // [0.5 0.7 1.0 1.5 2.0]
@@ -3161,7 +3179,7 @@ index 39eddc2..ffabd5e 100644
  
    //#define ADVANCED_COLOR
  
-@@ -673,21 +757,19 @@ const float monocleFix = 0.0 / 0.0;
+@@ -673,21 +758,19 @@ const float monocleFix = 0.0 / 0.0;
    //#define WAVEFORM_SCOPE
  
  	#define WAVEFORM_SIZE 		0 	// [0 1]
@@ -3186,7 +3204,7 @@ index 39eddc2..ffabd5e 100644
  
  	#if FSR2_SCALE >= 0 || SR_ENABLE == 1
  		#define SUPER_RESOLUTION
-@@ -712,11 +794,6 @@ const float monocleFix = 0.0 / 0.0;
+@@ -712,11 +795,6 @@ const float monocleFix = 0.0 / 0.0;
    //#define PURKINJE_EFFECT
  	#define PURKINJE_EFFECT_THRESHOLD 	0.00003 // [0.00001 0.000015 0.00002 0.00003 0.00005 0.00007 0.0001 0.00015 0.0002 0.0003 0.0005 0.0007 0.001]
  	#define PURKINJE_EFFECT_STRENGTH 	0.7 	// [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
@@ -3198,7 +3216,7 @@ index 39eddc2..ffabd5e 100644
  //Distant Horizons----------------------
    //#define DH_SHADOW
  	#define DH_TEXTURE_NOISE
-@@ -762,4 +839,6 @@ const float monocleFix = 0.0 / 0.0;
+@@ -762,4 +840,6 @@ const float monocleFix = 0.0 / 0.0;
    //#define DEBUG_IRC
    //#define DISABLE_REFLECTION_TEMPORAL_MOTIONWEIGHT
  
@@ -3320,7 +3338,7 @@ index 28607f9..86d7e29 100644
 +}
 +#endif
 diff --git a/shaders/lang/en_us.lang b/shaders/lang/en_us.lang
-index 63e6f5c..d49da3d 100644
+index 63e6f5c..522f820 100644
 --- a/shaders/lang/en_us.lang
 +++ b/shaders/lang/en_us.lang
 @@ -1,5 +1,4 @@
@@ -3563,7 +3581,7 @@ index 63e6f5c..d49da3d 100644
  option.ADVANCED_COLOR=Advanced Color Adjustment
  
  screen.ADVANCED_COLOR=Setting
-@@ -774,5 +874,18 @@ screen.ANIMATION=Animation Setting
+@@ -774,5 +874,21 @@ screen.ANIMATION=Animation Setting
  
  
  
@@ -3582,6 +3600,9 @@ index 63e6f5c..d49da3d 100644
 +option.AURORA_PROBABILITY.comment=Adjusts the chance of the Aurora appearing on any given night.
 +option.AURORA_FORCE=Force Aurora
 +option.AURORA_FORCE.comment=Forces the Aurora to appear regardless of probability (still requires night time and correct biome). Used for testing.
++ 
++option.SUNSET_EXPOSURE=Sunset Exposure
++option.SUNSET_EXPOSURE.comment=Enables custom auto-exposure behavior during sunset (11500-13000 ticks). Slows down reaction time to prevent flickering when looking at the sun and removes hard color clipping for a higher dynamic range.
 diff --git a/shaders/lang/zh_cn.lang b/shaders/lang/zh_cn.lang
 index ba32fbd..5472ecd 100644
 --- a/shaders/lang/zh_cn.lang
@@ -3616,7 +3637,7 @@ index ba32fbd..5472ecd 100644
  
  
 diff --git a/shaders/shaders.properties b/shaders/shaders.properties
-index 4b42503..699a81c 100644
+index 4b42503..7c1c69e 100644
 --- a/shaders/shaders.properties
 +++ b/shaders/shaders.properties
 @@ -466,6 +466,11 @@ customTexture.CloudDetailedNoise3D=texture/CloudNoise2_32_32_32.bin TEXTURE_3D R
@@ -3689,7 +3710,7 @@ index 4b42503..699a81c 100644
  
  
  
-@@ -848,13 +867,32 @@ screen= iterationRP_INFO    iterationRP_VERSION \
+@@ -848,13 +867,33 @@ screen= iterationRP_INFO    iterationRP_VERSION \
  		[PT_DIFFUSE]        [SURFACE] \
  		[PT_SPECULAR]       [VOL] \
  		[PT_IRC]            [POSTPROCESSING] \
@@ -3707,7 +3728,8 @@ index 4b42503..699a81c 100644
 +								[TIME_GRADE_SETTING]    [SSS] \
 +								[CLOUD_GODRAYS]         [BOKEH_SETTING] \
 +								[AURORA_SETTING]        [CLOUD_AGING] \
-+								LANDSCATTERING_STRENGTH_MIN LANDSCATTERING_STRENGTH_MAX
++								LANDSCATTERING_STRENGTH_MIN LANDSCATTERING_STRENGTH_MAX \
++								SUNSET_EXPOSURE
 +
 +screen.CLOUD_AGING= CLOUD_AGING_SQUASH CLOUD_AGING_SOFTENING <empty> CLOUD_AGING_EROSION_MIN CLOUD_AGING_EROSION_MAX
 +
@@ -3723,7 +3745,7 @@ index 4b42503..699a81c 100644
  screen.PT_VOXEL=PT_VOXEL_RESOLUTION <empty> PT_MIDBLOCK_TEMPFIX PT_FULLBLOCK_VERIFICATION <empty> PT_TAG_DETECTION PT_FULLBLOCK_DETECTION PT_FULLBLOCK_DETECTION_ALPHA_TRACING <empty> VANILLA_EMISSIVE
  
  screen.PT_DIFFUSE = PT_DIFFUSE_TRACING_DISTANCE               [PT_DIFFUSE_DENOISE] \
-@@ -973,7 +1011,7 @@ screen.SURFACE= [POM]         [PT_ATLAS] \
+@@ -973,7 +1012,7 @@ screen.SURFACE= [POM]         [PT_ATLAS] \
  
  		screen.REFRACTION_ROUGHNESS=REFRACTION_ROUGHNESS_TEMPORAL REFRACTION_ROUGHNESS_STRENGTH
  		
@@ -3732,7 +3754,7 @@ index 4b42503..699a81c 100644
  
  		screen.POROSITY=TEXTURE_DEFAULT_POROSITY <empty> POROSITY_ABSORPTION <empty> SURFACE_WETNESS
  
-@@ -1037,6 +1075,9 @@ screen.SURFACE= [POM]         [PT_ATLAS] \
+@@ -1037,6 +1076,9 @@ screen.SURFACE= [POM]         [PT_ATLAS] \
  screen.VOL= PLANAR_CLOUDS   VOLUMETRIC_CLOUDS \
  			[PC]            [VC] \
  			<empty>         <empty> \
@@ -3742,7 +3764,7 @@ index 4b42503..699a81c 100644
  			VFOG            LANDSCATTERING \
  			[VFOG]          [LANDSCATTERING] \
  			VFOG_REFLECTION LANDSCATTERING_REFLECTION \
-@@ -1044,7 +1085,11 @@ screen.VOL= PLANAR_CLOUDS   VOLUMETRIC_CLOUDS \
+@@ -1044,7 +1086,11 @@ screen.VOL= PLANAR_CLOUDS   VOLUMETRIC_CLOUDS \
  			<empty>         <empty> \
  			INDOOR_FOG      [VOL_MISC]
  
@@ -3755,7 +3777,7 @@ index 4b42503..699a81c 100644
  
  		screen.PC_CLEAR_SETTING=PC_CLEAR_COVERAGE \
  								PC_CLEAR_DENSITY \
-@@ -1060,29 +1105,58 @@ screen.VOL= PLANAR_CLOUDS   VOLUMETRIC_CLOUDS \
+@@ -1060,29 +1106,58 @@ screen.VOL= PLANAR_CLOUDS   VOLUMETRIC_CLOUDS \
  				<empty>                CLOUD_BASE_NOISE_SCALE \
  				[VC_CLEAR_SETTING]     CLOUD_DETAILED_NOISE_SCALE \
  				[VC_RAIN_SETTING]      CLOUD_COVERAGE_NOISE_OFFSET \
@@ -3821,7 +3843,7 @@ index 4b42503..699a81c 100644
  
  	screen.VFOG=[VFOG_NOISE_SETTING]     VFOG_HEIGHT \
  				VFOG_QUALITY             VFOG_HEIGHT_2 \
-@@ -1092,27 +1166,27 @@ screen.VOL= PLANAR_CLOUDS   VOLUMETRIC_CLOUDS \
+@@ -1092,27 +1167,27 @@ screen.VOL= PLANAR_CLOUDS   VOLUMETRIC_CLOUDS \
  				VFOG_SUNLIGHT_ABSORPTION VFOG_RAIN_DENSITY_MUL \
  				<empty>                  <empty> \
  				VFOG_SUNLIGHT_DENSITY    VFOG_STAINED \
@@ -3857,7 +3879,7 @@ index 4b42503..699a81c 100644
  						[COLOR]               [RESOLUTION] 
  
  	screen.TAA_SETTING= TAA_BLENDWEIGHT TAA_AGGRESSION <empty> TAA_SUBPIXEL_SHARPNING
-@@ -1120,6 +1194,7 @@ screen.POSTPROCESSING = [DOF_SETTING]         FSR2_SCALE \
+@@ -1120,6 +1195,7 @@ screen.POSTPROCESSING = [DOF_SETTING]         FSR2_SCALE \
  	screen.FIDELITY_FX_SETTING= CAS_SHARPNESS CAS_DENOISE
  
  	screen.DOF_SETTING= DOF                   CAMERA_FOCUS_MODE \
@@ -3865,7 +3887,7 @@ index 4b42503..699a81c 100644
  						DISABLE_HAND_DOF      CAMERA_FOCAL_POINT \
  						<empty>               DOF_DEPTH_SMMOOTH_HALFLIFE \
  						DOF_BLUR              DOF_FOCUS_IGNORE_HAND_PARTICLE \
-@@ -1131,7 +1206,7 @@ screen.POSTPROCESSING = [DOF_SETTING]         FSR2_SCALE \
+@@ -1131,7 +1207,7 @@ screen.POSTPROCESSING = [DOF_SETTING]         FSR2_SCALE \
  
  	screen.EXPOSURE_SETTING=AE_MODE                   SMOOTH_EXPOSURE \
  							AE_CURVE                  EXPOSURE_TIME \
@@ -3874,7 +3896,7 @@ index 4b42503..699a81c 100644
  							<empty>                   MANUAL_EXPOSURE \
  							LUMINANCE_WEIGHT_MODE     EV_VALUE \
  							LUMINANCE_WEIGHT_STRENGTH
-@@ -1140,10 +1215,23 @@ screen.POSTPROCESSING = [DOF_SETTING]         FSR2_SCALE \
+@@ -1140,10 +1216,23 @@ screen.POSTPROCESSING = [DOF_SETTING]         FSR2_SCALE \
  
  	screen.VIGNETTE_SETTING=VIGNETTE VIGNETTE_FALLOFF VIGNETTE_ROUNDNESS <empty> SNEAKING_VIGNETTE
  
@@ -3899,7 +3921,7 @@ index 4b42503..699a81c 100644
  
  		screen.ADVANCED_COLOR = HIGHLIGHT_CURVE  WHITE_POINT        <empty> \
  								SHADOW_CURVE     BLACK_POINT        <empty> \
-@@ -1217,28 +1305,33 @@ sliders=PT_VOXEL_RESOLUTION \
+@@ -1217,28 +1306,33 @@ sliders=PT_VOXEL_RESOLUTION \
  		wetnessHalflife drynessHalflife RAIN_SHADOW RAIN_WIND_X RAIN_WIND_Z RAIN_DISTURBANCE RAIN_SPLASH_SPEED RAIN_SPLASH_STRENGTH RAIN_SPLASH_SCALE \
  		HASHSTARS_BRIGHTNESS SKY_TEXTURE_BRIGHTNESS END_PLANET_CYCLE END_MANUAL_PLANET_CYCLE ACCRETIONDISC_ANGLE \
  		SELECTION_BOX_COLOR_R SELECTION_BOX_COLOR_G SELECTION_BOX_COLOR_B HAND_FOV \
