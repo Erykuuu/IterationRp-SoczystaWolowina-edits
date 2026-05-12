@@ -1,6 +1,9 @@
-# IterationRP Edit - V1.12 Patch
+# IterationRP Edit - V1.13 Patch
 
 This repository provides a patch for the **IterationRP Alpha 0.8.22** shader pack. Due to licensing, the original shader code cannot be distributed directly. Users must own the original shader zip to apply this edit.
+## New in V1.13
+- **multiple visual fixes**
+- **cloud edhes wisp and hair effects** 
 ## New in V1.12
 - **integrated the IterationRp 0.8.22 changes to the patches so now its deafult version for V1.12+**
 - **Hdr support and transparency fix from original**
@@ -38,7 +41,7 @@ Bokeh styles for Depth of field
 - The original `iterationRP Alpha 0.8.18.zip` file.
 
 ### Instructions
-1. Download `shader-patch.py` and `ITRPeditV1.12.diff` from this repository.
+1. Download `shader-patch.py` and `ITRPeditV1.13.diff` from this repository.
 2. Place the original `iterationRP Alpha 0.8.22.zip` in the same folder.
 3. Open a terminal/command prompt in that folder.
 4. Run the following command:
@@ -48,10 +51,10 @@ python shader-patch.py "iterationRP Alpha 0.8.18.zip" "ITRPeditV1.11.diff" "ITRP
 ```
 or for the V1.12 using 0.8.22
 ```bash
-python shader-patch.py "iterationRP Alpha 0.8.22.zip" "ITRPeditV1.12.diff" "ITRPedit_V1.12.zip"
+python shader-patch.py "iterationRP Alpha 0.8.22.zip" "ITRPeditV1.13.diff" "ITRPedit_V1.13.zip"
 ```
 
-5. The patched shader pack will be generated as `ITRPedit_V1.11.zip`/`ITRPedit_V1.12.zip`. You can now move this into your Minecraft `shaderpacks` folder.
+5. The patched shader pack will be generated as `ITRPedit_V1.11.zip`/`ITRPedit_V1.13.zip`. You can now move this into your Minecraft `shaderpacks` folder.
 
 ## Credits
 - Original Shader: [IterationRP](https://github.com/Tahnass/IterationRP)
