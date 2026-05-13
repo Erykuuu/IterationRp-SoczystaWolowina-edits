@@ -40,7 +40,7 @@ Bokeh styles for Depth of field
 ### Requirements
 - Python 3.x installed.
 - Git installed (for `git apply` functionality).
-- The original `iterationRP Alpha 0.8.18.zip` file.
+- The original `iterationRP Alpha 0.8.22.zip` file.
 
 ### Instructions
 1. Download `shader-patch.py` and `ITRPeditV1.13.diff` from this repository.
