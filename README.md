@@ -1,6 +1,7 @@
 # IterationRP Edit - V1.13 Patch
 
 This repository provides a patch for the **IterationRP Alpha 0.8.22** shader pack. Due to licensing, the original shader code cannot be distributed directly. Users must own the original shader zip to apply this edit.
+##hotfix for 1.13 hdr clamping at 216 nits
 ## New in V1.13
 - **multiple visual fixes**
 - **cloud edhes wisp and hair effects** 
