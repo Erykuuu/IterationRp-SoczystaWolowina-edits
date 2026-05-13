@@ -51,7 +51,7 @@ Bokeh styles for Depth of field
 ```bash
 python shader-patch.py "iterationRP Alpha 0.8.18.zip" "ITRPeditV1.11.diff" "ITRPedit_V1.11.zip"
 ```
-or for the V1.12 using 0.8.22
+or for the V1.12+ using 0.8.22
 ```bash
 python shader-patch.py "iterationRP Alpha 0.8.22.zip" "ITRPeditV1.13.diff" "ITRPedit_V1.13.zip"
 ```
