@@ -1,9 +1,11 @@
 # IterationRP Edit - V1.14 Patch
 
 This repository provides a patch for the **IterationRP Alpha 0.8.22** shader pack. Due to licensing, the original shader code cannot be distributed directly. Users must own the original shader zip to apply this edit.
+## New in V1.15
+- **added wave simulation from Eclipse Shader**
+- **added profiles for settings *Original, Edit* as well for clouds style *Original, Edit, Original with Dynamic Weather*. For best experience i recomed using "Shaders Profiles" mod from modrinth**
 ## New in V1.14
 -added Dust Motes 
-
 - **hotfix for 1.13 hdr clamping at 216 nits**
 ## New in V1.13
 - **multiple visual fixes**
@@ -45,7 +47,7 @@ Bokeh styles for Depth of field
 - The original `iterationRP Alpha 0.8.22.zip` file.
 
 ### Instructions
-1. Download `shader-patch.py` and `ITRPeditV1.14.diff` from this repository.
+1. Download `shader-patch.py` and `ITRPeditV1.15.diff` from this repository.
 2. Place the original `iterationRP Alpha 0.8.22.zip` in the same folder.
 3. Open a terminal/command prompt in that folder.
 4. Run the following command:
@@ -55,10 +57,10 @@ python shader-patch.py "iterationRP Alpha 0.8.18.zip" "ITRPeditV1.11.diff" "ITRP
 ```
 or for the V1.12+ using 0.8.22
 ```bash
-python shader-patch.py "iterationRP Alpha 0.8.22.zip" "ITRPeditV1.14.diff" "ITRPedit_V1.14.zip"
+python shader-patch.py "iterationRP Alpha 0.8.22.zip" "ITRPeditV1.15.diff" "ITRPedit_V1.15.zip"
 ```
 
-5. The patched shader pack will be generated as `ITRPedit_V1.11.zip`/`ITRPedit_V1.14.zip`. You can now move this into your Minecraft `shaderpacks` folder.
+5. The patched shader pack will be generated as `ITRPedit_V1.11.zip`/`ITRPedit_V1.15.zip`. You can now move this into your Minecraft `shaderpacks` folder.
 
 ## Credits
 - Original Shader: [IterationRP](https://github.com/Tahnass/IterationRP)
