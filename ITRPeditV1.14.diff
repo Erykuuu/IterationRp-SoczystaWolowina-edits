@@ -1,13 +1,11 @@
 diff --git a/ChangeLog_CN.txt b/ChangeLog_CN.txt
-deleted file mode 100644
-index 5017755..0000000
+index 5017755..b3f04f2 100644
 --- a/ChangeLog_CN.txt
-+++ /dev/null
-@@ -1,720 +0,0 @@
--
--
--iterationRP 更新日志
--
++++ b/ChangeLog_CN.txt
+@@ -2,44 +2,6 @@
+ 
+ iterationRP 更新日志
+ 
 -0.8.22
 -调整GT与ACES色调映射的Gamma校正曲线
 -微调末地黑洞发光颜色
@@ -46,716 +44,9 @@ index 5017755..0000000
 -修复Voxy与DH区块方块光照缺失
 -
 -
--0.8.18
--修复部分GPU报错
--修复voxy水面视差缺失
--
--
--0.8.17
--重写水面视差
--新增漫反射"降噪细节等级"选项，平衡降噪与细节保留的优先级
--新增自定义渲染分辨率"背景颜色"选项
--
--微调水波形态
--调整阳光高光强度
--
--修复voxy半透明错误发光
--修复半透明后voxy区块主世界雾气渲染缺失
--修复半透明后voxy区块下界与末地雾气渲染错误
--修复开启离线渲染模式时出现错误
--修复开启自定义渲染分辨率时出现错误
--修复漏光修复开启时，暗处阴影遮蔽过渡断层
--
--
--0.8.16
--新增漫反射降噪风格选项，新的"细节优先"模式可大幅提升光照细节表现
--新增"遮挡噪声抑制"选项，优化光线累积不足时的噪声水平
--
--修复同时开启超分辨率与景深时，屏幕边缘出现亮边
--
--
--0.8.15
--修复使用DH时出现错误
--修复开启"阴影贴图植被摆动"时出现错误
--
--
--0.8.14
--⚠️block.properties版本已更新至2，请勿使用旧版覆盖!!!
--
--新增"强制追踪纹理对齐"选项，设置为"部分"时可修复相当情况下的追踪纹理错位
--
--回退0.8.11完全透明法线像素的视差剔除的更改，以修复部分资源包的视差问题
--
--修复阳光低角度照射时可能出现漏光
--修复voxy兼容在下界及末地失效
--修复启用超分辨率时voxy区块屏幕空间阴影缺失
--修复活塞体素形状错误
--修复手部完全透明像素未被剔除
--
--
--0.8.13
--重写半透明方块粗糙折射，并新增相关选项
--
--修复使用"Super Resolution 超分辨率"模组时，voxy兼容失效
--修复使用DH或voxy时，LOD区块水体不透明
--修复使用DH或voxy并开启超分辨率时，景深无法聚焦于LOD区块
--修复半透明方块粗糙反射出现亮斑
--修复手部半透明粗糙折射失效
--
--
--0.8.12
--新增"Super Resolution 超分辨率"模组支持，已支持即将更新的DLSS模式
--新增FSR2超分辨率的voxy模组兼容
--
--
--0.8.11
--新增半透明方块粗糙反射与折射
--新增"材质-杂项"中法线贴图与高光贴图开关
--新增"反射降噪细节"选项，设置为"高"时能提供更清晰的粗糙反射
--
--优化半影"最大投影距离"设置值较高时，半影强度计算的精度
--完全透明法线像素的视差现在不会被剔除，以修复部分资源包的视差问题
--
--修复阳光倾斜照射表面时，阴影光斑会出现切角
--修复关闭半影时，阴影采样质量轻微下降
--修复"实体状态颜色"选项消失
--
--
--0.8.10
--新增"屏幕空间反射:仅屏幕空间反射"选项，为屏幕空间反射爱好者提供独享的机会
--
--修复开启各向异性过滤时，某些自定义模型出现黑色斑点闪烁
--修复大角度法线纹理的漫反射过暗
--修复有染色纹理的实体(如绵羊)受伤时，染色效果缺失
--修复甜浆果丛的植被晃动效果缺失
--修复预留的彩色光源的方块映射的颜色与预期不符
--
--
--0.8.9
--新增植物摆动效果(默认关闭)
--新增预留的彩色光源的方块映射ID(block.512-4095)
--新增末地烛自定义颜色选项
--
--优化实体受伤状态颜色可见性
--调整默认太阳轨迹
--离线渲染模式开启时禁用锐化
--
--修复Monocle导致的兼容性问题(ATM系列整合包)
--修复视角变化时阴影可能出现的闪烁
--修复视差开启时，透明像素的表现与关闭时不一致
--修复某些阴影质量设置下，半影模糊量低于预期
--修复视差追踪在远处出现错误遮蔽
--修复RTWSM反射权重错误
--
--
--0.8.8
--新增voxy模组兼容
--新增labPBR金属预设
--
--调整PBR相关设置逻辑
--
--修复"雨滴可见度"选项失效
--修复远处水面在低角度观察时出现黑斑
--修复使用DH时，下界泛光强度不及预期
--修复半透明粒子后，DH区块雾气渲染缺失
--
--
--0.8.7
--修复开启"实体硬编码自发光检测"时有概率出现错误
--
--
--0.8.6
--新增Colorwheel模组兼容，支持机械动力模组渲染
--新增PBR贴图设置中"实体硬编码自发光检测"选项，以修复部分模组实体发光缺失
--新增色彩调整中"波形图"相关选项
--
--修复实体雨天打湿效果缺失
--
--
--0.8.5
--新增漫反射追踪"半透明方块折射"
--
--优化开启FSR2时屏幕空间追踪的拖影
--"实体顶点法线平滑"调整为默认关闭，以避免部分模组出现光照错误
--
--修复"墙上的铜火把"追踪体素缺失
--修复染色玻璃后屏幕空间追踪错误遮蔽
--
--
--0.8.4
--修复开启FSR2时屏幕空间追踪错位
--修复视差追踪可能出现的错误光照遮挡
--
--
--0.8.3
--重写视差追踪，并新增"SST 视差追踪"选项，替代"光线追踪中视差"
--
--修复"光线采样数"大于1时，视差追踪效果被弱化
--
--
--0.8.2
--新增更多离线渲染模式相关选项
--新增星星亮度选项
--
--优化离线渲染中镜面反射的累积效率
--
--修复铜火把追踪体素缺失
--修复蜡烛材质发光错误
--
--
--0.8.1
--新增离线渲染模式
--
--修复活塞及展示架的追踪阴影错误
--
--
--0.7.26
--新增对1.21.10的支持
--    新增铜灯笼与展示架的体素编码
--新增block.properties内ID映射版本的说明
--
--修复部分情况下黑色文字渲染丢失
--修复自发光模式为"仅PBR"时，手部手持物品光照缺失
--
--
--0.7.25
--优化染色玻璃吸收颜色
--优化反射天空盒中云体质量，减少移动时的闪烁
--
--
--0.7.24
--修复平滑视差模式下，开启追踪中视差导致部分法线贴图丢失
--修复开启追踪中视差并关闭实体视差时出现报错
--
--
--0.7.23
--修复FSR2与追踪中视差同时开启时，光照颜色错误
--修复追踪中视差开启时，DH区块光照丢失
--
--
--0.7.22
--新增视差中"光线追踪中的视差"选项，实现完整的视差漫反射光照
--
--优化FSR1开启时，视角移动的清晰度
--
--修复FSR1开启时，下界与末地出现渲染错误
--修复"平滑"视差模式下可能出现的视差断层
--修复水下粒子光照与混合
--修复水下辐照缓存次级光照
--
--
--0.7.21
--新增自定义渲染分辨率中，"FSR 1 超分辨率"缩放模式
--
--修复开启FSR2时屏幕空间阴影失效
--修复开启自定义渲染分辨率时，关闭动态模糊导致错误
--
--
--0.7.20
--新增自定义渲染分辨率中，"整数缩放"与"宽高比"选项
--
--优化屏幕空间阴影对短距离投影的细节表现
--扩展自定义渲染分辨率可选项
--
--修复自定义渲染分辨率中，部分分辨率组合可能会导致曝光与泛光异常
--修复自定义渲染分辨率对DH模组的兼容性问题
--修复自定义渲染分辨率开启时雨滴错位
--修复屏幕空间阴影在较低分辨率下出现错误遮蔽
--修复追踪时域降噪在较低分辨率下出现闪烁
--修复追踪时域降噪在细微几何结构处出现闪烁
--修复追踪时域降噪在高强度法线表面处出现闪烁
--修复TAA导致的屏幕边缘处黑边或黑点
--修复TAA导致的屏幕边缘处拖影
--
--
--0.7.19
--新增后处理"自定义渲染分辨率"选项，可以实现高效遮幅
--
--
--0.7.18
--优化平滑曝光插值稳定性
--扩展追踪距离设置可选项
--
--修复追踪范围外无光基础光照缺失
--修复下界与末地追踪范围内外基础光照亮度不一致
--修复不同维度中，追踪范围外方块光照亮度不一致
--修复水下光照颜色不受水雾散射颜色影响
--
--
--0.7.17
--新增半透明后雾气渲染
--
--调整火把类组光源的材质发光亮度
--
--修复部分"追踪体素半径"设置下，粒子全局光照缺失
--修复部分"追踪体素半径"设置下，近距离追踪阴影缺失
--修复半透明后DH区块漫反射时域降噪失效
--
--
--0.7.16
--调整全局光照范围外粒子光照强度
--
--修复粒子阳光光照错误
--修复雨天粒子阳光遮蔽失效
--修复半透明后漫反射时域降噪失效
--修复折射错误
--
--
--0.7.15
--新增粒子全局光照
--新增光照"粒子发光亮度"选项
--新增TAA"次像素锐化"选项
--新增光影设置部分重要提示
--
--优化降噪性能表现
--
--修复半透明粒子后水面渲染错误
--修复粒子深度冲突
--
--
--0.7.14
--修复开启辐照缓存"初始光照"时出现错误
--
--
--0.7.13
--新增"灯笼形状体素"选项，开启后可回退灯笼体素调整
--新增灵魂营火光照颜色设置
--
--修复辐照缓存"每帧采样数"大于1时，次级光照出现错误
--
--
--0.7.12
--新增"GT(Uchimura)"Tonemap类型
--新增更多球状追踪光源颜色设置
--
--优化植物次表面散射
--优化太阳光球外观，并新增相关调整选项
--调整灯笼体素编码方式(改为与火把一致)
--
--修复水下天空日月渲染缺失
--修复屏幕空间反射中天空反射部分缺失
--
--
--0.7.11
--修复半透明后水面阳光高光缺失
--修复同时开启"降低手部模糊"与"被遮蔽水面额外渲染"时报错
--
--
--0.7.10
--新增“镜面反射追踪-被遮蔽水面额外渲染”选项，以修复半透明后水面反射缺失
--新增"追踪体素-高坐标值修复"选项，以修复任意坐标轴大于8388607时出现体素化错误(又是iris干的)
--
--优化反射降噪性能
--
--修复半透明后水面渲染错误
--修复水下半透明后水雾缺失
--修复部分情况下半透明吸收层级错误
--修复屏幕空间追踪会被雾气干扰的问题
--修复末地细雪内雾气缺失
--
--
--0.7.9
--优化平滑视差性能
--优化雨滴涟漪在粗糙表面的可见度
--
--修复TAA可能导致雾气出现网格状纹理
--修复体积雾开启"全时段启用"时"雨天密度乘数"失效
--
--
--0.7.8
--新增体积雾噪声“团雾”模式
--新增体积雾“雨天密度乘数”选项
--
--优化体积雾散射
--调整体积雾默认密度与阳光强度
--调整雨天阳光遮蔽默认强度
--调整雨滴涟漪默认缩放
--
--修复雨滴可见度选项失效
--修复DH兼容性
--
--
--0.7.7
--新增雨滴涟漪
--
--优化粗糙表面反射的法线清晰度
--优化雨天水洼效果
--
--修复同时开启视差与Physics Mod的动态方块物理时，有概率导致客户端崩溃
--修复部分实体视差强度错误
--
--
--0.7.6
--新增"漫反射追踪-忽略完整方块自身命中"选项(默认开启)，以修复完整方块使用自定义模型时，方块内部光照缺失
--
--
--0.7.5
--新增对1.21.6的支持
--
--修复恶魂在阳光下可能出现错误的阴影遮挡
--修复DH极远处水雾消失
--
--
--0.7.4
--修复FSR2开启时，视差开启或各向异性过滤关闭时，mipmap强度过高导致纹理细节丢失
--修复FSR2开启时，SST重映射关闭时，屏幕追踪光照错位
--修复FSR2开启时，SST屏幕追踪出现明显拖影
--
--
--0.7.3
--优化视差闪烁与伪影
--优化开启FSR2时的噪声表现
--
--修复DH"地形防混叠"在半透明地形上未生效
--
--
--0.7.2
--修复开启FSR2时的相关问题:
--    修复DH运动矢量缺失
--    修复手持光源阴影偏移
--    修复景深边缘泛白
--    修复雨滴偏移
--    修复关闭FSR2时，雨滴缺失
--    修复关闭"SST 重映射"时，屏幕空间追踪错误遮蔽
--
--
--0.7.1
--新增FSR2超分辨率(未完工，DH兼容缺失)
--
--修复阴影焦散撕裂
--
--
--0.6.9
--修复平滑视差开启时，非规整四边形(例如流动的熔岩)出现纹理错误
--
--
--0.6.8
--重写视差
--    修复混用不同分辨率纹理时，可能出现的视差撕裂
--    实体视差现在无需设置纹理分辨率
--    优化部分情况下视差的性能表现
--
--修复泛光微小偏移
--
--
--0.6.7
--修复反射过滤中，金属与非金属反射的错误混合
--修复手持光源时，手部金属颜色异常
--修复DH区块半透明异常发光
--
--
--0.6.6
--新增"追踪纹理设置"及相关选项
--    大幅优化使用高分辨率资源包的性能表现(需要将视频设置中"Mipmap级别"设置为"4x")
--
--优化使用高分辨率资源包的阴影性能
--
--修复下界金属自发光颜色错误
--
--
--0.6.5
--优化视角变化时AMD显卡的性能表现
--优化部分情况下暗部光照闪烁
--优化"点状"星星类型的移动轨迹
--
--修复粒子错误发光
--修复"原版"星星类型缺失
--修复"原版"星星与月亮贴图不受"日出方向旋转"选项影响
--修复阴影焦散失效
--
--
--0.6.4
--新增"日出方向旋转"选项
--新增光源方块追踪光照，并同时新增对应的"球状追踪光源颜色设置"
--
--将"模糊量计算质量"合并至"阴影采样质量"
--
--修复火把等光源光照无法被染色玻璃染色
--修复手持半透明物体靠近光源时错误发光
--
--
--0.6.3
--新增动态模糊"快门类型"选项，可使用"快门速度"，并允许模糊量超过当前帧率最大动态模糊
--新增追踪体素"方块标签检测"选项
--
--优化动态模糊平滑度
--调整动态模糊噪声形态
--开启“原版光源检测”时，棕色蘑菇与红石矿不再整体发光
--
--修复金属自发光颜色错误
--
--
--0.6.2
--新增PBR金属相关设置
--    "覆盖最低f0值"修复金属反射饱和度过低
--    "漫反射强度"修复强烈光照下金属漫反射过于明显
--    "反射遮罩强度"修复半透明后金属过暗
--新增更多可选的"体素追踪半径"
--
--修复下界东南方向远处体素缺失
--修复末地追踪范围外方块光照缺失
--修复"阴影渲染距离"小于"追踪体素半径"时，远处体素缺失
--修复下界传送门发光与水雾的层级错误
--修复视角摇晃导致的水波位移
--修复阴影螺旋状采样伪影
--
--
--0.6.1
--新增 Distant Horizons 兼容及相关选项
--新增水体折射
--新增 RTWSM "扭曲参照图分辨率"选项，改善高阴影渲染距离下的阴影精度
--新增地面大气散射"反射中渲染"选项
--
--优化水面大尺度细节表现
--优化阴影贴图范围外，屏幕空间阴影的强度
--优化阴影贴图范围外，屏幕空间阴影植被散射的强度
--
--修复下界RTWSM的错误额外渲染
--修复下界开启景深时，泛光雾缺失
--修复下界水体吸收缺失
--修复屏幕空间阴影极远处的闪烁
--修复屏幕空间阴影极远处植被散射过暗
--修复开启“禁用手部景深”时，对焦于极近处会导致焦点失焦
--修复在极小 fov 下，远处屏幕空间反射缺失
--
--
--0.5.6
--新增TACZ兼容相关选项——自适应发光与枪口焰
--
--优化开启"降低手部模糊"时，手部的动态模糊
--
--
--0.5.5
--新增TACZ兼容相关选项
--
--
--0.5.4
--新增"非追踪光源色温"选项
--
--调整下界传送门发光逻辑
--
--修复末地视差阴影
--修复追踪区域外基础光照丢失
--
--
--0.5.3
--新增下界传送门发光
--新增半透明后下界雾气渲染
--
--修复末地折跃门特殊渲染丢失
--修复开启视差时末地传送门偶发缩小
--
--
--0.5.2
--新增黑洞(相较于ITT的更新内容):
--    新增"吸积盘角度"选项
--    新增多普勒效应波长变化
--    调整吸积盘外观
--
--调整末地泛光强度
--调整末地曝光
--
--修复末地漫反射天空盒过暗
--修复末地辐照缓存暗部错误
--修复末地水体渲染缺失
--修复行星阴影失效
--修复闪电未发光
--
--
--0.5.1
--新增末地渲染(未完工)
--
--开启“原版光源检测”时，红石矿、熔炉及其变体不再整体发光
--
--修复反射中雾气渲染轻微错位
--
--
--0.4.9
--新增进阶色彩调整-颜色分级
--新增进阶色彩调整-色调曲线
--
--修复开启进阶色彩调整时暗部溢出
--修复部分iris版本报错
--
--
--0.4.8
--新增“完整方块检测”
--新增“原版光源检测”
--新增部分模组非完整方块检测 (树叶、楼梯、台阶等)
--新增水体散射相关选项
--
--调整水下体积雾设置独立于体积雾
--
--修复部分追踪半透明纹理错误
--修复日出日落时水体散射颜色错误
--
--
--0.4.7
--新增手持光源手电筒模式
--新增手持光源反射
--新增手持光源衰减设置
--新增“下界环境亮度”选项
--
--调整紫水晶簇发光颜色
--
--修复粘性活塞体素缺失
--修复反射中辐照缓存过亮
--修复下界“体素半径”为8区块时的体素错误
--修复使用DH时，开启景深报错
--
--
--0.4.6
--修复下界TAA边缘闪烁
--修复下界开启DOF时出现错误
--
--
--0.4.5
--新增下界渲染
--
--调整灵魂火焰的渲染方式
--提升下界相同设置下的体素范围
--
--修复暗处基础光照亮度不均
--修复熔岩与火焰的硬编码自发光缺失
--修复反射辐照缓存中，超出范围部分的暗处基础光照与水下基础光照缺失
--
--
--0.4.4
--新增景深
--
--
--0.4.3：
--新增近距离追踪阴影，修复部分阳光漏光
--新增发光地衣与火焰体素
--新增原版雾气（细雪、熔岩等）
--
--优化暗处基础光照细节表现
--优化重载光影时曝光响应速度
--调整泛光过曝限制强度
--调整反射过滤法线权重
--
--修复熔炉及其变体的体素缺失
--修复水中反射NaN导致的黑块错误
--修复洞穴等暗处反射中过亮的体积雾
--修复平滑曝光偶发失效
--修复末地与下界维度反射错误
--
--
--0.4.2：
--新增体积雾“反射中渲染”
--新增屏幕空间反射“屏幕边缘平滑”选项
--
--修复AMD显卡兼容性
--修复“PBR类型”为PTGI时自发光错误
--修复视差开启时次表面散射失效
--
--
--0.4.1：
--新增体积雾 (未完工)
--新增水下体积光 (未完工)
--
--优化漫反射降噪稳定性
--优化漫反射降噪法线可见度
--
--修复“光线采样数”大于1时，屏幕空间追踪未如期工作
--
--
--0.3.12：
--新增漫反射“光线采样数”选项
--
--优化屏幕空间反射
--优化辐照缓存响应速度
--优化文件体积
--
--修复部分模组兼容性
--修复反射中辐照缓存漏光
--修复信标在自发光模式为“仅PBR”时未发光
--
--
--0.3.11：
--优化体素边界过渡
--调整粒子渲染
--
--
--0.3.10：
--修复性能表现异常
--
--
--0.3.9：
--新增雨滴
--新增半透明手部渲染
--
--优化漫反射降噪，减少高频噪声
--调整开启“漏光修复”时光照屏蔽的过渡
--
--修复追踪反射中辐照缓存偏暗的问题
--修复追踪反射中关闭“辐照缓存平滑”时异常偏亮
--修复实体名字黑块
--
--
--0.3.8：
--新增手部屏幕空间阴影
--新增天空盒分辨率调整选项
--
--优化反射降噪动态表现
--调整方块发光强度
--调整曝光逻辑
--调整夜视效果
--默认关闭次表面散射
--
--修复破坏方块纹理混合异常
--修复Flashback中曝光错误引起的白屏
--修复音符盒体素缺失
--
--
--0.3.7：
--新增泛光“过曝限制”选项
--
--优化漫反射降噪，改善高时域累积帧时的表现
--调整曝光与色调映射
--调整PBR类型选项
--
--
--0.3.6：
--新增“反射法线强度”选项
--改善屏幕空间反射的混合质量
--优化平滑曝光过渡时长
--
--修复一个NaN导致的黑块错误
--修复附魔光效闪烁
--修复末地烛在自发光模式为“仅PBR”时未发光
-diff --git a/LICENSE.md b/LICENSE.md
-deleted file mode 100644
-index 288af99..0000000
---- a/LICENSE.md
-+++ /dev/null
-@@ -1,25 +0,0 @@
--Copyright (C) 2025 Tahnass
--
--All Rights Reserved unless explicit permission.
--
--Independent hosting and redistribution are prohibited, as is using link 
--monetization services. Websites or blogs collecting similar projects must 
--obtain explicit permission before including this project. 
--
--Private modifications are allowed without permission, but redistributing 
--modified versions requires the author's consent. Public redistribution of 
--modified versions also needs explicit permission, must include significant 
--original work, use the same license, and credit the original project and 
--author. Monetization of modified versions is prohibited without permission. 
--
--Using parts of this project's source code in another original project also 
--requires explicit permission and proper credit, with monetization prohibited 
--unless authorized.
--
--THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
--IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
--FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
--AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
--LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
--OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
--THE SOFTWARE.
-\ No newline at end of file
+ 0.8.18
+ 修复部分GPU报错
+ 修复voxy水面视差缺失
 diff --git a/shaders/Lib/BasicFunctions/HeldLight.glsl b/shaders/Lib/BasicFunctions/HeldLight.glsl
 index 3741dc7..0ec1ca9 100644
 --- a/shaders/Lib/BasicFunctions/HeldLight.glsl
@@ -2825,7 +2116,7 @@ index 0000000..207ca25
 +    return sunGate * wetGate * cycle * RAINBOW_BRIGHTNESS;
 +}
 diff --git a/shaders/Lib/IndividualFunctions/VolumetricFog.glsl b/shaders/Lib/IndividualFunctions/VolumetricFog.glsl
-index 430d354..e789472 100644
+index 430d354..e6ae340 100644
 --- a/shaders/Lib/IndividualFunctions/VolumetricFog.glsl
 +++ b/shaders/Lib/IndividualFunctions/VolumetricFog.glsl
 @@ -1,3 +1,8 @@
@@ -2837,20 +2128,18 @@ index 430d354..e789472 100644
  
  
  #if VFOG_NOISE_TYPE == 0
-@@ -124,12 +129,39 @@ void VolumetricFog(inout vec3 color, vec3 startPos, vec3 endPos, vec3 worldDir,
+@@ -124,12 +129,37 @@ void VolumetricFog(inout vec3 color, vec3 startPos, vec3 endPos, vec3 worldDir,
  		vec3 translucentColor = vec3(0.0);
  	#endif
  
-+	// Shared time mask for godrays and dust motes (1.0 = day, 0.0 = sunset/sunrise/night)
-+	float timeMask = smoothstep(800.0, 1500.0, float(worldTime)) * (1.0 - smoothstep(10400.0, 11200.0, float(worldTime)));
-+
 +	// ---- Dust motes setup (v6 — high-contrast noise godrays) ----
 +	#ifdef DUST_MOTES
 +		float dustGHMask = 1.0;
 +		#if DUST_MOTES_GOLDEN_HOUR_ONLY == 1
-+			// Golden hour is when timeMask approaches 0. 
-+			// We multiply by sunlight intensity to avoid deep night if SUNLIGHT_ONLY is off.
-+			dustGHMask = (1.0 - timeMask) * smoothstep(0.0, 0.1, SUNLIGHT_INTENSITY);
++			dustGHMask = smoothstep(10500.0, 11500.0, float(worldTime))
++			           * (1.0 - smoothstep(13000.0, 14000.0, float(worldTime)));
++			dustGHMask += smoothstep(22000.0, 23000.0, float(worldTime));
++			dustGHMask = saturate(dustGHMask);
 +		#endif
 +		#if DUST_MOTES_SUNLIGHT_ONLY == 1
 +			dustGHMask *= step(0.01, SUNLIGHT_INTENSITY);
@@ -2877,7 +2166,7 @@ index 430d354..e789472 100644
  		vec3 shadowPos = shadowStart + stepLength * shadowRayVector;
  
  		#if VFOG_NOISE_TYPE == 0
-@@ -165,49 +197,67 @@ void VolumetricFog(inout vec3 color, vec3 startPos, vec3 endPos, vec3 worldDir,
+@@ -165,49 +195,67 @@ void VolumetricFog(inout vec3 color, vec3 startPos, vec3 endPos, vec3 worldDir,
  			vec3 shadowColorSample = vec3(0.0);
  		#endif
  
@@ -2977,14 +2266,19 @@ index 430d354..e789472 100644
  		#ifdef VFOG_STAINED
  			translucentColor += stepRayDensity * shadowColorSample;
  		#endif
-@@ -229,12 +279,29 @@ void VolumetricFog(inout vec3 color, vec3 startPos, vec3 endPos, vec3 worldDir,
+@@ -229,12 +277,30 @@ void VolumetricFog(inout vec3 color, vec3 startPos, vec3 endPos, vec3 worldDir,
  	#endif
  
  	fogColor *= 0.3 * VFOG_FOG_DENSITY      * SKYLIGHT_INTENSITY;
 -	rayColor *= 1.2 * VFOG_SUNLIGHT_DENSITY * SUNLIGHT_INTENSITY;
 +	
 +	float godrayBoost = 1.0;
-+
++	float timeMask = smoothstep(800.0, 1500.0, float(worldTime)) * (1.0 - smoothstep(10400.0, 11200.0, float(worldTime)));
+ 
+-	//#if !defined VOLUMETRIC_CLOUDS || !defined CLOUD_SHADOW || !defined VFOG_CLOUD_SHADOW
+-		rayColor *= mix(globalCloudShadow, 1.0, wetness * 0.025);
+-		//rayColor *= globalCloudShadow;
+-	//#endif
 +	#ifdef CLOUD_SHADOW
 +		vec3 sunDir = worldShadowVector * (step(sunAngle, 0.5) * 2.0 - 1.0);
 +		float noonBoost = saturate(sunDir.y * 1.5);
@@ -3003,16 +2297,12 @@ index 430d354..e789472 100644
 +
 +	float rainBoost = mix(1.0, 3.5, wetness); // High humidity strongly highlights light shafts
 +	rayColor *= 1.5 * VFOG_SUNLIGHT_DENSITY * SUNLIGHT_INTENSITY * godrayBoost * currentGodrayBrightness * rainBoost;
- 
--	//#if !defined VOLUMETRIC_CLOUDS || !defined CLOUD_SHADOW || !defined VFOG_CLOUD_SHADOW
--		rayColor *= mix(globalCloudShadow, 1.0, wetness * 0.025);
--		//rayColor *= globalCloudShadow;
--	//#endif
++
 +	rayColor *= mix(1.0, 0.9, wetness * 0.1); // Minimal softening to keep rays piercing
  
  	#ifndef INDOOR_FOG
  		fogColor *= eyeBrightnessSmoothCurved;
-@@ -246,6 +313,10 @@ void VolumetricFog(inout vec3 color, vec3 startPos, vec3 endPos, vec3 worldDir,
+@@ -246,6 +312,10 @@ void VolumetricFog(inout vec3 color, vec3 startPos, vec3 endPos, vec3 worldDir,
  
  	color = transmittance * color;
  	color += fogColor + rayColor;
@@ -3023,8 +2313,14 @@ index 430d354..e789472 100644
  }
  
  
-@@ -346,7 +417,8 @@ vec3 simpleScattering(vec3 camera, vec3 worldDir, float dist, float shadowDist,
- #endif
+@@ -341,12 +411,11 @@ vec3 simpleScattering(vec3 camera, vec3 worldDir, float dist, float shadowDist,
+ 	return scattering * atmosphereModel_solar_irradiance * attenuation * LMS;
+ }
+ 
+-#ifdef SHOW_TODO
+-#error "Land Scattering: timeMidnight"
+-#endif
++// Fixed: Land Scattering timeMidnight implementation
  
  void LandAtmosphericScattering(inout vec3 color, float dist, vec3 startPos, vec3 endPos, vec3 worldDir, bool isSky){
 -	float strength = max(LANDSCATTERING_STRENGTH - float(isSky), 0.0);
@@ -3033,7 +2329,7 @@ index 430d354..e789472 100644
  	#ifdef VFOG
  		strength *= 1.0 - fogTime.x;
  	#endif
-@@ -392,7 +464,14 @@ void LandAtmosphericScattering(inout vec3 color, float dist, vec3 startPos, vec3
+@@ -392,7 +461,14 @@ void LandAtmosphericScattering(inout vec3 color, float dist, vec3 startPos, vec3
  
  				if (saturate(shadowPos.xy) == shadowPos.xy && shadowPos.z < 1.0){
  					float solidDepth = textureLod(shadowtex0, shadowPos.xy, 0).x;
@@ -3049,14 +2345,22 @@ index 430d354..e789472 100644
  				}
  			}
  
-@@ -402,7 +481,8 @@ void LandAtmosphericScattering(inout vec3 color, float dist, vec3 startPos, vec3
+@@ -402,7 +478,15 @@ void LandAtmosphericScattering(inout vec3 color, float dist, vec3 startPos, vec3
  		dist *= LANDSCATTERING_DISTANCE;
  		shadowDist *= LANDSCATTERING_DISTANCE;
  
 -		color += simpleScattering(camera, worldDir, dist, shadowDist, worldSunVector)
+-			   * strength;
 +		vec3 sunDir = worldShadowVector * (step(sunAngle, 0.5) * 2.0 - 1.0);
-+		color += simpleScattering(camera, worldDir, dist, shadowDist, sunDir)
- 			   * strength;
++		
++		vec3 scatterColor = simpleScattering(camera, worldDir, dist, shadowDist, sunDir);
++
++		// Moonlight is much weaker than sunlight and has a colder tone.
++		// We use timeMidnight to smoothly fade the scattering intensity and shift its color.
++		float nightDim = mix(1.0, 0.02, timeMidnight); 
++		vec3 nightTint = mix(vec3(1.0), vec3(0.5, 0.7, 1.0), timeMidnight); 
++
++		color += scatterColor * strength * nightDim * nightTint;
  	}
  }
 \ No newline at end of file
@@ -4285,7 +3589,7 @@ index 66a4fe1..ca268d6 100644
  /*
  	vec3 shadow = SampleCurrColorFetch(texelCoord);
 diff --git a/shaders/Lib/Programs/Composite/DiffuseTracing_FS.glsl b/shaders/Lib/Programs/Composite/DiffuseTracing_FS.glsl
-index 489730e..43734ed 100644
+index 489730e..6269758 100644
 --- a/shaders/Lib/Programs/Composite/DiffuseTracing_FS.glsl
 +++ b/shaders/Lib/Programs/Composite/DiffuseTracing_FS.glsl
 @@ -7,8 +7,8 @@
@@ -4357,15 +3661,6 @@ index 489730e..43734ed 100644
 +				diffuse *= texelFetch(colortex4, sampleTexel, 0).rgb;
  
  			#endif
- 
-@@ -260,7 +260,7 @@ vec3 DiffuseTracing(vec3 viewPosRaw, float depth, vec3 vertexNormal, vec3 worldN
- 
- 	#ifdef LOD_RENDERING
- 
--		if (clamp(hitVoxelPos, vec3(0.0), vec3(voxelResolution)) != hitVoxelPos || depth > 1.0){		
-+		if (clamp(hitVoxelPos, vec3(0.0), vec3(voxelResolution)) != hitVoxelPos && depth < 1.0){		
- 
- 	#else
  
 @@ -565,7 +565,7 @@ vec3 DiffuseTracing(vec3 viewPosRaw, float depth, vec3 vertexNormal, vec3 worldN
  
@@ -9015,10 +8310,10 @@ index 7de12f9..435d752 100644
 +
 +#endif // SETTINGS_GLSL
 diff --git a/shaders/Lib/UniformDeclare.glsl b/shaders/Lib/UniformDeclare.glsl
-index 6c2c28c..5960452 100644
+index 6c2c28c..46badae 100644
 --- a/shaders/Lib/UniformDeclare.glsl
 +++ b/shaders/Lib/UniformDeclare.glsl
-@@ -1,16 +1,29 @@
+@@ -1,16 +1,30 @@
  
 -
  #include "/Lib/Settings.glsl"
@@ -9029,6 +8324,7 @@ index 6c2c28c..5960452 100644
  uniform int heldItemId2;
  uniform int heldBlockLightValue2;
  uniform int worldTime;
++uniform float timeMidnight;
 +uniform int worldDay;
  uniform int frameCounter;
 +uniform float HdrGamePeakBrightness;
@@ -9050,7 +8346,7 @@ index 6c2c28c..5960452 100644
  uniform float sunAngle;
  uniform float aspectRatio;
  uniform float viewWidth;
-@@ -25,6 +38,7 @@ uniform mat4 gbufferModelViewInverse;
+@@ -25,6 +39,7 @@ uniform mat4 gbufferModelViewInverse;
  uniform mat4 gbufferPreviousModelView;
  uniform mat4 shadowProjection;
  uniform float wetness;
@@ -9058,7 +8354,7 @@ index 6c2c28c..5960452 100644
  uniform ivec2 eyeBrightnessSmooth;
  uniform int isEyeInWater;
  uniform float nightVision;
-@@ -59,12 +73,12 @@ uniform float eyeRySmooth;
+@@ -59,12 +74,12 @@ uniform float eyeRySmooth;
  uniform float isSneakingSmooth;
  uniform bool rtwDiscardRefresh;
  
@@ -9077,7 +8373,7 @@ index 6c2c28c..5960452 100644
  
  
  #ifdef SUPER_RESOLUTION
-@@ -107,7 +121,7 @@ uniform bool rtwDiscardRefresh;
+@@ -107,7 +122,7 @@ uniform bool rtwDiscardRefresh;
  	#define LOD_DEPTH_TEX_1 dhDepthTex1
  #endif
  
@@ -9086,7 +8382,7 @@ index 6c2c28c..5960452 100644
  	uniform vec4 lodProjection0;
  	uniform vec2 lodProjectionInverse0;
  	uniform vec3 lodProjectionInverse1;
-@@ -125,20 +139,18 @@ uniform bool rtwDiscardRefresh;
+@@ -125,20 +140,18 @@ uniform bool rtwDiscardRefresh;
  #endif
  
  uniform sampler2D FBTEX_ALBEDO;
@@ -9114,7 +8410,7 @@ index 6c2c28c..5960452 100644
  #endif
  
  uniform sampler2D depthtex0;
-@@ -156,4 +168,8 @@ uniform sampler2D atlasSpecular2D;
+@@ -156,4 +169,8 @@ uniform sampler2D atlasSpecular2D;
  uniform sampler3D CloudNoise3D;
  uniform sampler3D CloudDetailedNoise3D;
  uniform sampler3D atmoLut3D;
@@ -12318,12 +11614,12 @@ diff --git a/shaders/world-1/composite19.vsh b/shaders/world-1/composite2.vsh
 similarity index 100%
 rename from shaders/world-1/composite19.vsh
 rename to shaders/world-1/composite2.vsh
-diff --git a/shaders/world1/composite70.csh b/shaders/world-1/composite20.csh
+diff --git a/shaders/composite70.csh b/shaders/world-1/composite20.csh
 similarity index 74%
-rename from shaders/world1/composite70.csh
+rename from shaders/composite70.csh
 rename to shaders/world-1/composite20.csh
 index 8c7284f..99ff00a 100644
---- a/shaders/world1/composite70.csh
+--- a/shaders/composite70.csh
 +++ b/shaders/world-1/composite20.csh
 @@ -3,6 +3,7 @@
  
@@ -12333,12 +11629,12 @@ index 8c7284f..99ff00a 100644
  
  
  #include "/Lib/Programs/Composite/Bloom_CS.glsl"
-diff --git a/shaders/world-1/composite71.csh b/shaders/world-1/composite21.csh
+diff --git a/shaders/composite71.csh b/shaders/world-1/composite21.csh
 similarity index 74%
-rename from shaders/world-1/composite71.csh
+rename from shaders/composite71.csh
 rename to shaders/world-1/composite21.csh
 index c8c1edf..0f6cb06 100644
---- a/shaders/world-1/composite71.csh
+--- a/shaders/composite71.csh
 +++ b/shaders/world-1/composite21.csh
 @@ -3,6 +3,7 @@
  
@@ -12926,12 +12222,12 @@ diff --git a/shaders/world1/composite40.vsh b/shaders/world1/composite2.vsh
 similarity index 100%
 rename from shaders/world1/composite40.vsh
 rename to shaders/world1/composite2.vsh
-diff --git a/shaders/composite70.csh b/shaders/world1/composite20.csh
+diff --git a/shaders/world1/composite70.csh b/shaders/world1/composite20.csh
 similarity index 74%
-rename from shaders/composite70.csh
+rename from shaders/world1/composite70.csh
 rename to shaders/world1/composite20.csh
 index 8c7284f..99ff00a 100644
---- a/shaders/composite70.csh
+--- a/shaders/world1/composite70.csh
 +++ b/shaders/world1/composite20.csh
 @@ -3,6 +3,7 @@
  
@@ -12941,12 +12237,12 @@ index 8c7284f..99ff00a 100644
  
  
  #include "/Lib/Programs/Composite/Bloom_CS.glsl"
-diff --git a/shaders/composite71.csh b/shaders/world1/composite21.csh
+diff --git a/shaders/world-1/composite71.csh b/shaders/world1/composite21.csh
 similarity index 74%
-rename from shaders/composite71.csh
+rename from shaders/world-1/composite71.csh
 rename to shaders/world1/composite21.csh
 index c8c1edf..0f6cb06 100644
---- a/shaders/composite71.csh
+--- a/shaders/world-1/composite71.csh
 +++ b/shaders/world1/composite21.csh
 @@ -3,6 +3,7 @@
  
@@ -13305,12 +12601,12 @@ diff --git a/shaders/world1/composite25.fsh b/shaders/world1/deferred15.fsh
 similarity index 100%
 rename from shaders/world1/composite25.fsh
 rename to shaders/world1/deferred15.fsh
-diff --git a/shaders/world1/composite44.vsh b/shaders/world1/deferred15.vsh
+diff --git a/shaders/world1/composite65.vsh b/shaders/world1/deferred15.vsh
 similarity index 67%
-rename from shaders/world1/composite44.vsh
+rename from shaders/world1/composite65.vsh
 rename to shaders/world1/deferred15.vsh
 index 896904b..5a76dc1 100644
---- a/shaders/world1/composite44.vsh
+--- a/shaders/world1/composite65.vsh
 +++ b/shaders/world1/deferred15.vsh
 @@ -1,4 +1,7 @@
  #version 430
@@ -13342,12 +12638,12 @@ index 0000000..eaaf2bd
 +
 +
 +#include "/Lib/Programs/Composite/DiffuseTracing_FS.glsl"
-diff --git a/shaders/world1/composite65.vsh b/shaders/world1/deferred3.vsh
+diff --git a/shaders/world1/composite44.vsh b/shaders/world1/deferred3.vsh
 similarity index 67%
-rename from shaders/world1/composite65.vsh
+rename from shaders/world1/composite44.vsh
 rename to shaders/world1/deferred3.vsh
 index 896904b..5a76dc1 100644
---- a/shaders/world1/composite65.vsh
+--- a/shaders/world1/composite44.vsh
 +++ b/shaders/world1/deferred3.vsh
 @@ -1,4 +1,7 @@
  #version 430
