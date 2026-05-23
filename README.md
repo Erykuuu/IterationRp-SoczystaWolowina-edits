@@ -1,6 +1,12 @@
 # IterationRP Edit - V1.14 Patch
 
 This repository provides a patch for the **IterationRP Alpha 0.8.22** shader pack. Due to licensing, the original shader code cannot be distributed directly. Users must own the original shader zip to apply this edit.
+## New in V1.16
+- **HUGE performance boost compared to last version**
+- **Flicker for light (torches, etc.)**
+- **aurora colors - for now no dynamic so u need to change it manually**
+- **lighleak fix - fix** //better lightleak fix behaviour during sunrize and sunset and mismatch betwen godrays and highlights
+- **enabled color stained godrays by deafult**
 ## New in V1.15
 - **added wave simulation from Eclipse Shader**
 - **added profiles for settings *Original, Edit* as well for clouds style *Original, Edit, Original with Dynamic Weather*. For best experience i recomed using "Shaders Profiles" mod from modrinth**
