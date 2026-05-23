@@ -63,10 +63,10 @@ python shader-patch.py "iterationRP Alpha 0.8.18.zip" "ITRPeditV1.11.diff" "ITRP
 ```
 or for the V1.12+ using 0.8.22
 ```bash
-python shader-patch.py "iterationRP Alpha 0.8.22.zip" "ITRPeditV1.15.diff" "ITRPedit_V1.15.zip"
+python shader-patch.py "iterationRP Alpha 0.8.22.zip" "ITRPeditV1.16.diff" "ITRPedit_V1.16.zip"
 ```
 
-5. The patched shader pack will be generated as `ITRPedit_V1.11.zip`/`ITRPedit_V1.15.zip`. You can now move this into your Minecraft `shaderpacks` folder.
+5. The patched shader pack will be generated as `ITRPedit_V1.11.zip`/`ITRPedit_V1.16.zip`. You can now move this into your Minecraft `shaderpacks` folder.
 
 ## Credits
 - Original Shader: [IterationRP](https://github.com/Tahnass/IterationRP)
