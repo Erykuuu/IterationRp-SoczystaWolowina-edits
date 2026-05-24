@@ -1,4 +1,4 @@
-# IterationRP Edit - V1.14 Patch
+# IterationRP Edit - V1.16 Patch
 
 This repository provides a patch for the **IterationRP Alpha 0.8.22** shader pack. Due to licensing, the original shader code cannot be distributed directly. Users must own the original shader zip to apply this edit.
 ## New in V1.16
