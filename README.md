@@ -7,7 +7,7 @@ This repository provides a patch for the **IterationRP Alpha 0.8.22** shader pac
 - **if u are intrested about ading custom kernels (the look of conv bloom) please check his repo and his tool**
 - **added some minor improvements, and aditional settings to cycle betwen custom kernels**
 - **changed deafult settings to much more playable/refined experience**
-
+## New in V1.16
 - **HUGE performance boost compared to last version**
 - **Flicker for light (torches, etc.)**
 - **aurora colors - for now no dynamic so u need to change it manually**
