@@ -1,7 +1,13 @@
-# IterationRP Edit - V1.16 Patch
+# IterationRP Edit - V1.17.1 Patch
 
 This repository provides a patch for the **IterationRP Alpha 0.8.22** shader pack. Due to licensing, the original shader code cannot be distributed directly. Users must own the original shader zip to apply this edit.
-## New in V1.16
+## New in V1.17
+- **Ported Convolution Bloom from huj's patches [huj31415/iterationrp-patches](https://github.com/huj31415/iterationrp-patches)**
+- **he is a goat**
+- **if u are intrested about ading custom kernels (the look of conv bloom) please check his repo and his tool**
+- **added some minor improvements, and aditional settings to cycle betwen custom kernels**
+- **changed deafult settings to much more playable/refined experience**
+
 - **HUGE performance boost compared to last version**
 - **Flicker for light (torches, etc.)**
 - **aurora colors - for now no dynamic so u need to change it manually**
@@ -63,10 +69,10 @@ python shader-patch.py "iterationRP Alpha 0.8.18.zip" "ITRPeditV1.11.diff" "ITRP
 ```
 or for the V1.12+ using 0.8.22
 ```bash
-python shader-patch.py "iterationRP Alpha 0.8.22.zip" "ITRPeditV1.16.diff" "ITRPedit_V1.16.zip"
+python shader-patch.py "iterationRP Alpha 0.8.22.zip" "ITRPeditV1.17.1.diff" "ITRPedit_V1.17.1.zip"
 ```
 
-5. The patched shader pack will be generated as `ITRPedit_V1.11.zip`/`ITRPedit_V1.16.zip`. You can now move this into your Minecraft `shaderpacks` folder.
+5. The patched shader pack will be generated as `ITRPedit_V1.11.zip`/`ITRPedit_V1.17.zip`. You can now move this into your Minecraft `shaderpacks` folder.
 
 ## Credits
 - Original Shader: [IterationRP](https://github.com/Tahnass/IterationRP)
