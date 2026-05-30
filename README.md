@@ -1,7 +1,7 @@
 # IterationRP Edit - V1.17.1 Patch
 
 This repository provides a patch for the **IterationRP Alpha 0.8.22** shader pack. Due to licensing, the original shader code cannot be distributed directly. Users must own the original shader zip to apply this edit.
-## New in V1.17
+## New in V1.17 - hotfix denoiser (dont turn off normal bloom)
 - **Ported Convolution Bloom from huj's patches [huj31415/iterationrp-patches](https://github.com/huj31415/iterationrp-patches)**
 - **he is a goat**
 - **if u are intrested about ading custom kernels (the look of conv bloom) please check his repo and his tool**
