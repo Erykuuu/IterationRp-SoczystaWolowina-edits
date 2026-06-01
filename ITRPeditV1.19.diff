@@ -1059,10 +1059,10 @@ index ff0f109..a38dcdb 100644
  	}
  #endif
 diff --git a/shaders/Lib/IndividualFunctions/CloudShadow.glsl b/shaders/Lib/IndividualFunctions/CloudShadow.glsl
-index 0113061..8073b1f 100644
+index 0113061..8409f9a 100644
 --- a/shaders/Lib/IndividualFunctions/CloudShadow.glsl
 +++ b/shaders/Lib/IndividualFunctions/CloudShadow.glsl
-@@ -1,63 +1,105 @@
+@@ -1,63 +1,110 @@
 -
 -
 -float BicubicBlurTexture(sampler2D texSampler, vec2 coord, vec2 texSize){
@@ -1138,7 +1138,12 @@ index 0113061..8073b1f 100644
 +#if CLOUD_SHADOW_PLAYER_CLEAR_RADIUS > 0
 +	float radius = float(CLOUD_SHADOW_PLAYER_CLEAR_RADIUS);
 +	float distToPlayer = length(absoluteWorldPos.xz - cameraPosition.xz);
-+	return smoothstep(radius * 0.75, radius, distToPlayer);
++	float clearFade = smoothstep(radius * 0.75, radius, distToPlayer);
++
++	// Do not clear player-local cloud shadows during rain/storms.
++	// wetness lingers after rain, so this also avoids the post-rain light cone.
++	float dryFade = 1.0 - smoothstep(0.02, 0.12, wetness);
++	return mix(1.0, clearFade, dryFade);
 +#else
 +	return 1.0;
 +#endif
@@ -12631,7 +12636,7 @@ index 7801e97..c5ce529 100644
 +
 +
 diff --git a/shaders/Lib/Settings.glsl b/shaders/Lib/Settings.glsl
-index 168f801..2acbe9e 100644
+index 168f801..a46bdc3 100644
 --- a/shaders/Lib/Settings.glsl
 +++ b/shaders/Lib/Settings.glsl
 @@ -1,817 +1,947 @@
@@ -13953,7 +13958,7 @@ index 168f801..2acbe9e 100644
 +
 +	#define PC_CLEAR_COVERAGE 		0.5 	// [0.3 0.32 0.34 0.36 0.38 0.4 0.42 0.44 0.46 0.48 0.5 0.52 0.54 0.56 0.58 0.6 0.62 0.64 0.66 0.68 0.7 0.72 0.74 0.76 0.78 0.8 0.82 0.84 0.86 0.88 0.9]
 +		#define PC_CLEAR_DENSITY 		1.6 	// [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0]
-+	#define PC_CLEAR_SUNLIGHTING 	0.1 	// [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0]
++	#define PC_CLEAR_SUNLIGHTING 	0.5 	// [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0]
 +	#define PC_CLEAR_SKYLIGHTING 	0.3		// [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0]
 +
 +	#define PC_RAIN_COVERAGE 		0.8 	// [0.3 0.32 0.34 0.36 0.38 0.4 0.42 0.44 0.46 0.48 0.5 0.52 0.54 0.56 0.58 0.6 0.62 0.64 0.66 0.68 0.7 0.72 0.74 0.76 0.78 0.8 0.82 0.84 0.86 0.88 0.9]
@@ -13979,9 +13984,9 @@ index 168f801..2acbe9e 100644
 +	#define VOLUMETRIC_CLOUDS
 +	#define CLOUD_QUALITY 					2.0 	// [0.4 0.6 0.8 1.0 1.2 1.4 1.6 1.8 2.0 2.5 3.0 5.0 7.0 10.0]
 +
-+	#define CLOUD_CLEAR_ALT_LOW 			1000.0 	// [1000.0]
-+	#define CLOUD_CLEAR_ALT_HIGH 			1600.0 	// [1600.0]
-+	#define CLOUD_CLEAR_COVERY 				0.28 	// [0.1 0.12 0.14 0.16 0.18 0.2 0.22 0.24 0.26 0.28 0.3 0.32 0.34 0.36 0.38 0.4 0.42 0.44 0.46 0.48 0.5 0.52 0.54 0.56 0.58 0.6 0.62 0.64 0.66 0.68 0.7 0.72 0.74 0.76 0.78 0.8 0.82 0.84 0.86 0.88 0.9 0.92 0.94 0.96 0.98 1.0 1.1 1.2 1.3 1.4 1.5]
++	#define CLOUD_CLEAR_ALT_LOW 			1000.0 	// [1000.0 1050.0 1100.0 1150.0 1200.0 1250.0 1300.0 1350.0 1400.0 1450.0 1500.0 1550.0 1600.0]
++	#define CLOUD_CLEAR_ALT_HIGH 			1600.0 	// [1000.0 1050.0 1100.0 1150.0 1200.0 1250.0 1300.0 1350.0 1400.0 1450.0 1500.0 1550.0 1600.0]
++	#define CLOUD_CLEAR_COVERY 				0.9 	// [0.1 0.12 0.14 0.16 0.18 0.2 0.22 0.24 0.26 0.28 0.3 0.32 0.34 0.36 0.38 0.4 0.42 0.44 0.46 0.48 0.5 0.52 0.54 0.56 0.58 0.6 0.62 0.64 0.66 0.68 0.7 0.72 0.74 0.76 0.78 0.8 0.82 0.84 0.86 0.88 0.9 0.92 0.94 0.96 0.98 1.0 1.1 1.2 1.3 1.4 1.5]
 +	#define CLOUD_CLEAR_DENSITY 			1.0 	// [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0]
 +	#define CLOUD_CLEAR_SUNLIGHTING			1.0		// [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0]
 +	#define CLOUD_CLEAR_SKYLIGHTING			1.0		// [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0]
@@ -18074,10 +18079,10 @@ index 0000000..2f790a3
 +#include "/Lib/Programs/Setup/KernelFFT_CS.glsl"
 \ No newline at end of file
 diff --git a/shaders/shaders.properties b/shaders/shaders.properties
-index 0c5cc99..c47f3bb 100644
+index 0c5cc99..31087e8 100644
 --- a/shaders/shaders.properties
 +++ b/shaders/shaders.properties
-@@ -1,1231 +1,1614 @@
+@@ -1,1231 +1,1615 @@
 -
 -clouds            =off
 -dynamicHandLight  =false
@@ -20901,6 +20906,7 @@ index 0c5cc99..c47f3bb 100644
 +    BLOOM_CLAMP_STRENGTH=0 \
 +    CLOUD_CLEAR_ALT_LOW=1000.0 \
 +    CLOUD_CLEAR_ALT_HIGH=1600.0 \
++    CLOUD_CLEAR_COVERY=0.9 \
 +    CLOUD_ALTITUDE_VARIATION=200.0 \
 +    CLOUD_OUTSCATTER_FACTOR=1.0 \
 +    CLOUD_QUALITY=2.0 \
@@ -20910,7 +20916,7 @@ index 0c5cc99..c47f3bb 100644
 +    CLOUD_WISP_FREQUENCY=1.0 \
 +    CLOUD_PLANAR_TYPE=4 \
 +    PC_CLEAR_SKYLIGHTING=0.3 \
-+    PC_CLEAR_SUNLIGHTING=0.1 \
++    PC_CLEAR_SUNLIGHTING=0.5 \
 +    PC_NOISE_SCALE=0.1 \
 +    PC_QUALITY=8 \
 +    PC_SOFTNESS=7 \
