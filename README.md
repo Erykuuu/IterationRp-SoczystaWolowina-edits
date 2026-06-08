@@ -1,6 +1,13 @@
-# IterationRP Edit - V1.19 Patch
+# IterationRP Edit - V2.0 Patch
 
-This repository provides a patch for the **IterationRP Alpha 0.8.22** shader pack. Due to licensing, the original shader code cannot be distributed directly. Users must own the original shader zip to apply this edit.
+This repository provides a patch for the **IterationRP Alpha 0.8.23** shader pack. Due to licensing, the original shader code cannot be distributed directly. Users must own the original shader zip to apply this edit.
+## New in V2.0
+- **changed build structure from old 0.8.18 to newest 0.8.23**
+- **Better dual lobe system**
+- **mostly all relevant features from previous edits, but porting takes time and this is still work in progress**
+- **OpenDRT support based on https://github.com/JElfferich/itrp-patches patches**
+- **ALL benefits of using new version (0.8.23) as base. So Transparency fix, better denoiser, and so on** 
+
 ## New in V1.19
 - **Revelation (shader) inspired cloud *coverage* map with localized clouds (no longer having overcast everywhere, or having one part clear while other has broken clouds)**
 - **Cloud Shadows distance from player** (how far from player they appear)
@@ -75,11 +82,12 @@ python shader-patch.py "iterationRP Alpha 0.8.18.zip" "ITRPeditV1.11.diff" "ITRP
 ```
 or for the V1.12+ using 0.8.22
 ```bash
-python shader-patch.py "iterationRP Alpha 0.8.22.zip" "ITRPeditV1.19.diff" "ITRPedit_V1.19.zip"
+python shader-patch.py "iterationRP Alpha 0.8.23.zip" "ITRPeditV2.0.0.diff" "ITRPedit_V2.0.0.zip"
 ```
 
-5. The patched shader pack will be generated as `ITRPedit_V1.11.zip`/`ITRPedit_V1.19.zip`. You can now move this into your Minecraft `shaderpacks` folder.
+5. The patched shader pack will be generated as `ITRPedit_V1.11.zip`/`ITRPedit_V2.0.0.zip`. You can now move this into your Minecraft `shaderpacks` folder.
 
 ## Credits
 - Original Shader: [IterationRP](https://github.com/Tahnass/IterationRP)
 - Patching Script based on: [huj31415/iterationrp-patches](https://github.com/huj31415/iterationrp-patches)
+- OpenDrt support creator: [JElfferich Jordy Elfferich](https://github.com/JElfferich/itrp-patches)
