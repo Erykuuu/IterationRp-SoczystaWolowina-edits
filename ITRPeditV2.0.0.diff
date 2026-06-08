@@ -365,7 +365,7 @@ index 0000000..cc43f59
 +	return mix(color, result, BIOME_GRADING_STRENGTH);
 +}
 diff --git a/shaders/Lib/IndividualFunctions/CloudShadow.glsl b/shaders/Lib/IndividualFunctions/CloudShadow.glsl
-index 1023ed2..13c8e81 100644
+index 1023ed2..c4cfdef 100644
 --- a/shaders/Lib/IndividualFunctions/CloudShadow.glsl
 +++ b/shaders/Lib/IndividualFunctions/CloudShadow.glsl
 @@ -1,5 +1,13 @@
@@ -393,7 +393,7 @@ index 1023ed2..13c8e81 100644
  	#ifdef NO_COMPOSITE_VS
  		vec3 worldShadowVector = shadowModelViewInverse2;
  	#endif
-@@ -60,4 +72,46 @@ float GetSmoothCloudShadow(){
+@@ -60,4 +72,47 @@ float GetSmoothCloudShadow(){
  	#endif
  
  	return globalCloudShadow;
@@ -410,12 +410,13 @@ index 1023ed2..13c8e81 100644
 +			vec3 sunDir = worldShadowVector * (step(sunAngle, 0.5) * 2.0 - 1.0);
 +
 +			if (sunDir.y > 0.02) {
-+				float baseAltitude = mix(CLOUD_CLEAR_ALTITUDE, CLOUD_RAIN_ALTITUDE, wetness);
-+				float baseThickness = mix(CLOUD_CLEAR_THICKNESS, CLOUD_RAIN_THICKNESS, wetness) * weather.thicknessMul;
++				RevelationDayParams day = ResolveRevelationDayParams();
++				float baseAltitude = mix(day.altitude, CLOUD_RAIN_ALTITUDE, wetness);
++				float baseThickness = mix(day.height, CLOUD_RAIN_THICKNESS, wetness) * weather.thicknessMul;
 +				vec2 dynamicAlt = vec2(baseAltitude, baseAltitude + baseThickness);
 +
 +				float planetRadius = atmosphereModel_bottom_radius * 1e3;
-+				float cloudScale = mix(CLOUD_CLEAR_SCALE, CLOUD_RAIN_SCALE, wetness);
++				float cloudScale = mix(day.scale, CLOUD_RAIN_SCALE, wetness);
 +				vec3 windDirection = weather.windOffset;
 +
 +				float totalDensity = 0.0;
@@ -425,7 +426,7 @@ index 1023ed2..13c8e81 100644
 +				for (int i = 0; i < shadowSamples; i++) {
 +					float h = dynamicAlt.x + (float(i) + 0.5) * shadowStep;
 +					vec3 p = absoluteWorldPos + sunDir * ((h - absoluteWorldPos.y) / sunDir.y);
-+					totalDensity += SampleDensity(SetCloudPos(p, dynamicAlt, planetRadius, cloudScale, windDirection), windDirection, false).y;
++					totalDensity += SampleDensity(SetCloudPos(p, dynamicAlt, planetRadius, cloudScale, windDirection), windDirection, false, day).y;
 +				}
 +
 +				float density = totalDensity / float(shadowSamples);
@@ -751,11 +752,334 @@ index 0000000..89b80ab
 +	#endif
 +}
 diff --git a/shaders/Lib/IndividualFunctions/NUBIS.glsl b/shaders/Lib/IndividualFunctions/NUBIS.glsl
-index fbcfbd8..420eb11 100644
+index fbcfbd8..c9d1afe 100644
 --- a/shaders/Lib/IndividualFunctions/NUBIS.glsl
 +++ b/shaders/Lib/IndividualFunctions/NUBIS.glsl
-@@ -1,8 +1,96 @@
+@@ -1,8 +1,419 @@
  
++struct RevelationDayParams {
++	float altitude;
++	float height;
++	float coverage;
++	float density;
++	float weatherLow;
++	float weatherHigh;
++	float weatherStrength;
++	float localNoise;
++	float scale;
++	float baseNoiseScale;
++	float detailNoiseScale;
++	float coverageNoiseOffset;
++	float detailedNoiseStrength;
++	float dualLobeSoftening;
++	float dualLobeBodyG;
++	float dualLobeBodyStrength;
++};
++
++int RevelationDayHash(int d) {
++	float h = fract(sin(float(d) * 12.9898 + 78.233) * 43758.5453);
++	return int(floor(h * 10.0));
++}
++
++float RevelationDayRainBypass() {
++	return saturate(wetness);
++}
++
++float RevelationDayPresetMix() {
++#if CLOUD_REVELATION_DAY_MODE == 0
++	return 0.0;
++#elif CLOUD_REVELATION_DAY_MODE == 1
++	return 1.0 - RevelationDayRainBypass();
++#else
++	return 1.0 - RevelationDayRainBypass();
++#endif
++}
++
++int RevelationDayCurrentIndex() {
++#if CLOUD_REVELATION_DAY_MODE == 1
++	return max(CLOUD_REVELATION_MANUAL_DAY - 1, 0);
++#elif CLOUD_REVELATION_DAY_MODE == 2
++	return int(mod(float(worldDay), 10.0));
++#elif CLOUD_REVELATION_DAY_MODE == 3
++	return RevelationDayHash(worldDay);
++#else
++	return 0;
++#endif
++}
++
++int RevelationDayPreviousIndex() {
++#if CLOUD_REVELATION_DAY_MODE == 2
++	return int(mod(float(worldDay + 9), 10.0));
++#elif CLOUD_REVELATION_DAY_MODE == 3
++	return RevelationDayHash(worldDay - 1);
++#else
++	return RevelationDayCurrentIndex();
++#endif
++}
++
++float RevelationDayBlend() {
++#if CLOUD_REVELATION_DAY_MODE == 2 || CLOUD_REVELATION_DAY_MODE == 3
++	float transitionTicks = min(1000.0, 1000.0 / max(CLOUD_REVELATION_DAY_TRANSITION_SPEED, 0.01));
++	float p = saturate(float(worldTime) / transitionTicks);
++	return p * p * (3.0 - 2.0 * p);
++#else
++	return 1.0;
++#endif
++}
++
++float RevelationDayApplyValue(float normalValue, float previousValue, float currentValue) {
++	float presetValue = mix(previousValue, currentValue, RevelationDayBlend());
++	return mix(normalValue, presetValue, RevelationDayPresetMix());
++}
++
++float RevelationDayLookup_ALTITUDE(int id) {
++	if (id == 0) return CLOUD_REV_DAY0_ALTITUDE;
++	if (id == 1) return CLOUD_REV_DAY1_ALTITUDE;
++	if (id == 2) return CLOUD_REV_DAY2_ALTITUDE;
++	if (id == 3) return CLOUD_REV_DAY3_ALTITUDE;
++	if (id == 4) return CLOUD_REV_DAY4_ALTITUDE;
++	if (id == 5) return CLOUD_REV_DAY5_ALTITUDE;
++	if (id == 6) return CLOUD_REV_DAY6_ALTITUDE;
++	if (id == 7) return CLOUD_REV_DAY7_ALTITUDE;
++	if (id == 8) return CLOUD_REV_DAY8_ALTITUDE;
++	if (id == 9) return CLOUD_REV_DAY9_ALTITUDE;
++	return CLOUD_CLEAR_ALTITUDE;
++}
++
++float RevelationDayLookup_HEIGHT(int id) {
++	if (id == 0) return CLOUD_REV_DAY0_HEIGHT;
++	if (id == 1) return CLOUD_REV_DAY1_HEIGHT;
++	if (id == 2) return CLOUD_REV_DAY2_HEIGHT;
++	if (id == 3) return CLOUD_REV_DAY3_HEIGHT;
++	if (id == 4) return CLOUD_REV_DAY4_HEIGHT;
++	if (id == 5) return CLOUD_REV_DAY5_HEIGHT;
++	if (id == 6) return CLOUD_REV_DAY6_HEIGHT;
++	if (id == 7) return CLOUD_REV_DAY7_HEIGHT;
++	if (id == 8) return CLOUD_REV_DAY8_HEIGHT;
++	if (id == 9) return CLOUD_REV_DAY9_HEIGHT;
++	return CLOUD_CLEAR_THICKNESS;
++}
++
++float RevelationDayLookup_COVERY(int id) {
++	if (id == 0) return CLOUD_REV_DAY0_COVERY;
++	if (id == 1) return CLOUD_REV_DAY1_COVERY;
++	if (id == 2) return CLOUD_REV_DAY2_COVERY;
++	if (id == 3) return CLOUD_REV_DAY3_COVERY;
++	if (id == 4) return CLOUD_REV_DAY4_COVERY;
++	if (id == 5) return CLOUD_REV_DAY5_COVERY;
++	if (id == 6) return CLOUD_REV_DAY6_COVERY;
++	if (id == 7) return CLOUD_REV_DAY7_COVERY;
++	if (id == 8) return CLOUD_REV_DAY8_COVERY;
++	if (id == 9) return CLOUD_REV_DAY9_COVERY;
++	return CLOUD_CLEAR_COVERY;
++}
++
++float RevelationDayLookup_DENSITY(int id) {
++	if (id == 0) return CLOUD_REV_DAY0_DENSITY;
++	if (id == 1) return CLOUD_REV_DAY1_DENSITY;
++	if (id == 2) return CLOUD_REV_DAY2_DENSITY;
++	if (id == 3) return CLOUD_REV_DAY3_DENSITY;
++	if (id == 4) return CLOUD_REV_DAY4_DENSITY;
++	if (id == 5) return CLOUD_REV_DAY5_DENSITY;
++	if (id == 6) return CLOUD_REV_DAY6_DENSITY;
++	if (id == 7) return CLOUD_REV_DAY7_DENSITY;
++	if (id == 8) return CLOUD_REV_DAY8_DENSITY;
++	if (id == 9) return CLOUD_REV_DAY9_DENSITY;
++	return CLOUD_CLEAR_DENSITY;
++}
++
++float RevelationDayLookup_WEATHER_LOW(int id) {
++	if (id == 0) return CLOUD_REV_DAY0_WEATHER_LOW;
++	if (id == 1) return CLOUD_REV_DAY1_WEATHER_LOW;
++	if (id == 2) return CLOUD_REV_DAY2_WEATHER_LOW;
++	if (id == 3) return CLOUD_REV_DAY3_WEATHER_LOW;
++	if (id == 4) return CLOUD_REV_DAY4_WEATHER_LOW;
++	if (id == 5) return CLOUD_REV_DAY5_WEATHER_LOW;
++	if (id == 6) return CLOUD_REV_DAY6_WEATHER_LOW;
++	if (id == 7) return CLOUD_REV_DAY7_WEATHER_LOW;
++	if (id == 8) return CLOUD_REV_DAY8_WEATHER_LOW;
++	if (id == 9) return CLOUD_REV_DAY9_WEATHER_LOW;
++	return CLOUD_REVELATION_WEATHER_LOW;
++}
++
++float RevelationDayLookup_WEATHER_HIGH(int id) {
++	if (id == 0) return CLOUD_REV_DAY0_WEATHER_HIGH;
++	if (id == 1) return CLOUD_REV_DAY1_WEATHER_HIGH;
++	if (id == 2) return CLOUD_REV_DAY2_WEATHER_HIGH;
++	if (id == 3) return CLOUD_REV_DAY3_WEATHER_HIGH;
++	if (id == 4) return CLOUD_REV_DAY4_WEATHER_HIGH;
++	if (id == 5) return CLOUD_REV_DAY5_WEATHER_HIGH;
++	if (id == 6) return CLOUD_REV_DAY6_WEATHER_HIGH;
++	if (id == 7) return CLOUD_REV_DAY7_WEATHER_HIGH;
++	if (id == 8) return CLOUD_REV_DAY8_WEATHER_HIGH;
++	if (id == 9) return CLOUD_REV_DAY9_WEATHER_HIGH;
++	return CLOUD_REVELATION_WEATHER_HIGH;
++}
++
++float RevelationDayLookup_WEATHER_STRENGTH(int id) {
++	if (id == 0) return CLOUD_REV_DAY0_WEATHER_STRENGTH;
++	if (id == 1) return CLOUD_REV_DAY1_WEATHER_STRENGTH;
++	if (id == 2) return CLOUD_REV_DAY2_WEATHER_STRENGTH;
++	if (id == 3) return CLOUD_REV_DAY3_WEATHER_STRENGTH;
++	if (id == 4) return CLOUD_REV_DAY4_WEATHER_STRENGTH;
++	if (id == 5) return CLOUD_REV_DAY5_WEATHER_STRENGTH;
++	if (id == 6) return CLOUD_REV_DAY6_WEATHER_STRENGTH;
++	if (id == 7) return CLOUD_REV_DAY7_WEATHER_STRENGTH;
++	if (id == 8) return CLOUD_REV_DAY8_WEATHER_STRENGTH;
++	if (id == 9) return CLOUD_REV_DAY9_WEATHER_STRENGTH;
++	return CLOUD_REVELATION_WEATHER_STRENGTH;
++}
++
++float RevelationDayLookup_LOCAL_NOISE(int id) {
++	if (id == 0) return CLOUD_REV_DAY0_LOCAL_NOISE;
++	if (id == 1) return CLOUD_REV_DAY1_LOCAL_NOISE;
++	if (id == 2) return CLOUD_REV_DAY2_LOCAL_NOISE;
++	if (id == 3) return CLOUD_REV_DAY3_LOCAL_NOISE;
++	if (id == 4) return CLOUD_REV_DAY4_LOCAL_NOISE;
++	if (id == 5) return CLOUD_REV_DAY5_LOCAL_NOISE;
++	if (id == 6) return CLOUD_REV_DAY6_LOCAL_NOISE;
++	if (id == 7) return CLOUD_REV_DAY7_LOCAL_NOISE;
++	if (id == 8) return CLOUD_REV_DAY8_LOCAL_NOISE;
++	if (id == 9) return CLOUD_REV_DAY9_LOCAL_NOISE;
++	return CLOUD_REVELATION_LOCAL_NOISE;
++}
++
++float RevelationDayLookup_SCALE(int id) {
++	if (id == 0) return CLOUD_REV_DAY0_SCALE;
++	if (id == 1) return CLOUD_REV_DAY1_SCALE;
++	if (id == 2) return CLOUD_REV_DAY2_SCALE;
++	if (id == 3) return CLOUD_REV_DAY3_SCALE;
++	if (id == 4) return CLOUD_REV_DAY4_SCALE;
++	if (id == 5) return CLOUD_REV_DAY5_SCALE;
++	if (id == 6) return CLOUD_REV_DAY6_SCALE;
++	if (id == 7) return CLOUD_REV_DAY7_SCALE;
++	if (id == 8) return CLOUD_REV_DAY8_SCALE;
++	if (id == 9) return CLOUD_REV_DAY9_SCALE;
++	return CLOUD_CLEAR_SCALE;
++}
++
++float RevelationDayLookup_BASE_NOISE_SCALE(int id) {
++	if (id == 0) return CLOUD_REV_DAY0_BASE_NOISE_SCALE;
++	if (id == 1) return CLOUD_REV_DAY1_BASE_NOISE_SCALE;
++	if (id == 2) return CLOUD_REV_DAY2_BASE_NOISE_SCALE;
++	if (id == 3) return CLOUD_REV_DAY3_BASE_NOISE_SCALE;
++	if (id == 4) return CLOUD_REV_DAY4_BASE_NOISE_SCALE;
++	if (id == 5) return CLOUD_REV_DAY5_BASE_NOISE_SCALE;
++	if (id == 6) return CLOUD_REV_DAY6_BASE_NOISE_SCALE;
++	if (id == 7) return CLOUD_REV_DAY7_BASE_NOISE_SCALE;
++	if (id == 8) return CLOUD_REV_DAY8_BASE_NOISE_SCALE;
++	if (id == 9) return CLOUD_REV_DAY9_BASE_NOISE_SCALE;
++	return CLOUD_BASE_NOISE_SCALE;
++}
++
++float RevelationDayLookup_DETAIL_NOISE_SCALE(int id) {
++	if (id == 0) return CLOUD_REV_DAY0_DETAIL_NOISE_SCALE;
++	if (id == 1) return CLOUD_REV_DAY1_DETAIL_NOISE_SCALE;
++	if (id == 2) return CLOUD_REV_DAY2_DETAIL_NOISE_SCALE;
++	if (id == 3) return CLOUD_REV_DAY3_DETAIL_NOISE_SCALE;
++	if (id == 4) return CLOUD_REV_DAY4_DETAIL_NOISE_SCALE;
++	if (id == 5) return CLOUD_REV_DAY5_DETAIL_NOISE_SCALE;
++	if (id == 6) return CLOUD_REV_DAY6_DETAIL_NOISE_SCALE;
++	if (id == 7) return CLOUD_REV_DAY7_DETAIL_NOISE_SCALE;
++	if (id == 8) return CLOUD_REV_DAY8_DETAIL_NOISE_SCALE;
++	if (id == 9) return CLOUD_REV_DAY9_DETAIL_NOISE_SCALE;
++	return CLOUD_DETAILED_NOISE_SCALE;
++}
++
++float RevelationDayLookup_COVERAGE_NOISE_OFFSET(int id) {
++	if (id == 0) return CLOUD_REV_DAY0_COVERAGE_NOISE_OFFSET;
++	if (id == 1) return CLOUD_REV_DAY1_COVERAGE_NOISE_OFFSET;
++	if (id == 2) return CLOUD_REV_DAY2_COVERAGE_NOISE_OFFSET;
++	if (id == 3) return CLOUD_REV_DAY3_COVERAGE_NOISE_OFFSET;
++	if (id == 4) return CLOUD_REV_DAY4_COVERAGE_NOISE_OFFSET;
++	if (id == 5) return CLOUD_REV_DAY5_COVERAGE_NOISE_OFFSET;
++	if (id == 6) return CLOUD_REV_DAY6_COVERAGE_NOISE_OFFSET;
++	if (id == 7) return CLOUD_REV_DAY7_COVERAGE_NOISE_OFFSET;
++	if (id == 8) return CLOUD_REV_DAY8_COVERAGE_NOISE_OFFSET;
++	if (id == 9) return CLOUD_REV_DAY9_COVERAGE_NOISE_OFFSET;
++	return CLOUD_COVERAGE_NOISE_OFFSET;
++}
++
++float RevelationDayLookup_DETAILED_NOISE_STRENGTH(int id) {
++	if (id == 0) return CLOUD_REV_DAY0_DETAILED_NOISE_STRENGTH;
++	if (id == 1) return CLOUD_REV_DAY1_DETAILED_NOISE_STRENGTH;
++	if (id == 2) return CLOUD_REV_DAY2_DETAILED_NOISE_STRENGTH;
++	if (id == 3) return CLOUD_REV_DAY3_DETAILED_NOISE_STRENGTH;
++	if (id == 4) return CLOUD_REV_DAY4_DETAILED_NOISE_STRENGTH;
++	if (id == 5) return CLOUD_REV_DAY5_DETAILED_NOISE_STRENGTH;
++	if (id == 6) return CLOUD_REV_DAY6_DETAILED_NOISE_STRENGTH;
++	if (id == 7) return CLOUD_REV_DAY7_DETAILED_NOISE_STRENGTH;
++	if (id == 8) return CLOUD_REV_DAY8_DETAILED_NOISE_STRENGTH;
++	if (id == 9) return CLOUD_REV_DAY9_DETAILED_NOISE_STRENGTH;
++	return CLOUD_DETAILED_NOISE_STRENGTH;
++}
++
++float RevelationDayLookup_DUAL_SOFTENING(int id) {
++	if (id == 0) return CLOUD_REV_DAY0_DUAL_SOFTENING;
++	if (id == 1) return CLOUD_REV_DAY1_DUAL_SOFTENING;
++	if (id == 2) return CLOUD_REV_DAY2_DUAL_SOFTENING;
++	if (id == 3) return CLOUD_REV_DAY3_DUAL_SOFTENING;
++	if (id == 4) return CLOUD_REV_DAY4_DUAL_SOFTENING;
++	if (id == 5) return CLOUD_REV_DAY5_DUAL_SOFTENING;
++	if (id == 6) return CLOUD_REV_DAY6_DUAL_SOFTENING;
++	if (id == 7) return CLOUD_REV_DAY7_DUAL_SOFTENING;
++	if (id == 8) return CLOUD_REV_DAY8_DUAL_SOFTENING;
++	if (id == 9) return CLOUD_REV_DAY9_DUAL_SOFTENING;
++	return CLOUD_DUAL_LOBE_SOFTENING;
++}
++
++float RevelationDayLookup_DUAL_BODY_G(int id) {
++	if (id == 0) return CLOUD_REV_DAY0_DUAL_BODY_G;
++	if (id == 1) return CLOUD_REV_DAY1_DUAL_BODY_G;
++	if (id == 2) return CLOUD_REV_DAY2_DUAL_BODY_G;
++	if (id == 3) return CLOUD_REV_DAY3_DUAL_BODY_G;
++	if (id == 4) return CLOUD_REV_DAY4_DUAL_BODY_G;
++	if (id == 5) return CLOUD_REV_DAY5_DUAL_BODY_G;
++	if (id == 6) return CLOUD_REV_DAY6_DUAL_BODY_G;
++	if (id == 7) return CLOUD_REV_DAY7_DUAL_BODY_G;
++	if (id == 8) return CLOUD_REV_DAY8_DUAL_BODY_G;
++	if (id == 9) return CLOUD_REV_DAY9_DUAL_BODY_G;
++	return CLOUD_DUAL_LOBE_BODY_G;
++}
++
++float RevelationDayLookup_DUAL_BODY_STRENGTH(int id) {
++	if (id == 0) return CLOUD_REV_DAY0_DUAL_BODY_STRENGTH;
++	if (id == 1) return CLOUD_REV_DAY1_DUAL_BODY_STRENGTH;
++	if (id == 2) return CLOUD_REV_DAY2_DUAL_BODY_STRENGTH;
++	if (id == 3) return CLOUD_REV_DAY3_DUAL_BODY_STRENGTH;
++	if (id == 4) return CLOUD_REV_DAY4_DUAL_BODY_STRENGTH;
++	if (id == 5) return CLOUD_REV_DAY5_DUAL_BODY_STRENGTH;
++	if (id == 6) return CLOUD_REV_DAY6_DUAL_BODY_STRENGTH;
++	if (id == 7) return CLOUD_REV_DAY7_DUAL_BODY_STRENGTH;
++	if (id == 8) return CLOUD_REV_DAY8_DUAL_BODY_STRENGTH;
++	if (id == 9) return CLOUD_REV_DAY9_DUAL_BODY_STRENGTH;
++	return CLOUD_DUAL_LOBE_BODY_STRENGTH;
++}
++
++RevelationDayParams ResolveRevelationDayParams() {
++	RevelationDayParams day;
++	int previousIndex = RevelationDayPreviousIndex();
++	int currentIndex = RevelationDayCurrentIndex();
++
++	day.altitude = RevelationDayApplyValue(CLOUD_CLEAR_ALTITUDE, RevelationDayLookup_ALTITUDE(previousIndex), RevelationDayLookup_ALTITUDE(currentIndex));
++	day.height = RevelationDayApplyValue(CLOUD_CLEAR_THICKNESS, RevelationDayLookup_HEIGHT(previousIndex), RevelationDayLookup_HEIGHT(currentIndex));
++	day.coverage = RevelationDayApplyValue(CLOUD_CLEAR_COVERY, RevelationDayLookup_COVERY(previousIndex), RevelationDayLookup_COVERY(currentIndex));
++	day.density = RevelationDayApplyValue(CLOUD_CLEAR_DENSITY, RevelationDayLookup_DENSITY(previousIndex), RevelationDayLookup_DENSITY(currentIndex));
++	day.weatherLow = RevelationDayApplyValue(CLOUD_REVELATION_WEATHER_LOW, RevelationDayLookup_WEATHER_LOW(previousIndex), RevelationDayLookup_WEATHER_LOW(currentIndex));
++	day.weatherHigh = RevelationDayApplyValue(CLOUD_REVELATION_WEATHER_HIGH, RevelationDayLookup_WEATHER_HIGH(previousIndex), RevelationDayLookup_WEATHER_HIGH(currentIndex));
++	day.weatherStrength = RevelationDayApplyValue(CLOUD_REVELATION_WEATHER_STRENGTH, RevelationDayLookup_WEATHER_STRENGTH(previousIndex), RevelationDayLookup_WEATHER_STRENGTH(currentIndex));
++	day.localNoise = RevelationDayApplyValue(CLOUD_REVELATION_LOCAL_NOISE, RevelationDayLookup_LOCAL_NOISE(previousIndex), RevelationDayLookup_LOCAL_NOISE(currentIndex));
++	day.scale = RevelationDayApplyValue(CLOUD_CLEAR_SCALE, RevelationDayLookup_SCALE(previousIndex), RevelationDayLookup_SCALE(currentIndex));
++	day.baseNoiseScale = RevelationDayApplyValue(CLOUD_BASE_NOISE_SCALE, RevelationDayLookup_BASE_NOISE_SCALE(previousIndex), RevelationDayLookup_BASE_NOISE_SCALE(currentIndex));
++	day.detailNoiseScale = RevelationDayApplyValue(CLOUD_DETAILED_NOISE_SCALE, RevelationDayLookup_DETAIL_NOISE_SCALE(previousIndex), RevelationDayLookup_DETAIL_NOISE_SCALE(currentIndex));
++	day.coverageNoiseOffset = RevelationDayApplyValue(CLOUD_COVERAGE_NOISE_OFFSET, RevelationDayLookup_COVERAGE_NOISE_OFFSET(previousIndex), RevelationDayLookup_COVERAGE_NOISE_OFFSET(currentIndex));
++	day.detailedNoiseStrength = RevelationDayApplyValue(CLOUD_DETAILED_NOISE_STRENGTH, RevelationDayLookup_DETAILED_NOISE_STRENGTH(previousIndex), RevelationDayLookup_DETAILED_NOISE_STRENGTH(currentIndex));
++	day.dualLobeSoftening = RevelationDayApplyValue(CLOUD_DUAL_LOBE_SOFTENING, RevelationDayLookup_DUAL_SOFTENING(previousIndex), RevelationDayLookup_DUAL_SOFTENING(currentIndex));
++	day.dualLobeBodyG = RevelationDayApplyValue(CLOUD_DUAL_LOBE_BODY_G, RevelationDayLookup_DUAL_BODY_G(previousIndex), RevelationDayLookup_DUAL_BODY_G(currentIndex));
++	day.dualLobeBodyStrength = RevelationDayApplyValue(CLOUD_DUAL_LOBE_BODY_STRENGTH, RevelationDayLookup_DUAL_BODY_STRENGTH(previousIndex), RevelationDayLookup_DUAL_BODY_STRENGTH(currentIndex));
++	return day;
++}
++
 +vec2 RevelationCloudWeatherWorldDrift() {
 +#ifdef CLOUD_REVELATION_WEATHER_MAP
 +	vec2 driftDir = normalize(vec2(1.0, 0.33));
@@ -789,7 +1113,7 @@ index fbcfbd8..420eb11 100644
 +#endif
 +}
 +
-+float RevelationCloudWeatherGate(vec3 cloudPos, vec3 windDirection) {
++float RevelationCloudWeatherGate(vec3 cloudPos, vec3 windDirection, RevelationDayParams day) {
 +#ifdef CLOUD_REVELATION_WEATHER_MAP
 +	vec2 weatherWorldDrift = RevelationCloudWeatherWorldDrift();
 +
@@ -797,15 +1121,15 @@ index fbcfbd8..420eb11 100644
 +	weatherUv += windDirection.xz * 0.015;
 +
 +	vec2 revWeather = SampleWrappedRevelationCloudMap(weatherUv);
-+	float mapCoverage = smoothstep(CLOUD_REVELATION_WEATHER_LOW, CLOUD_REVELATION_WEATHER_HIGH, revWeather.x);
++	float mapCoverage = smoothstep(day.weatherLow, day.weatherHigh, revWeather.x);
 +
 +	float hugeLocalNoise = textureLod(noisetex, (cloudPos.xz + weatherWorldDrift * 0.65) / 512000.0 + vec2(0.75), 0.0).z;
-+	float localGate = smoothstep(CLOUD_REVELATION_WEATHER_LOW * 1.1, CLOUD_REVELATION_WEATHER_HIGH * 0.8, hugeLocalNoise);
-+	mapCoverage *= mix(1.0, localGate, CLOUD_REVELATION_LOCAL_NOISE);
++	float localGate = smoothstep(day.weatherLow * 1.1, day.weatherHigh * 0.8, hugeLocalNoise);
++	mapCoverage *= mix(1.0, localGate, day.localNoise);
 +
 +	// When rain takes over, fade back toward the native rainy coverage instead of forcing dry gaps.
 +	float dryWeatherMapFade = 1.0 - smoothstep(0.02, 0.35, wetness);
-+	float weatherMapStrength = CLOUD_REVELATION_WEATHER_STRENGTH * dryWeatherMapFade;
++	float weatherMapStrength = day.weatherStrength * dryWeatherMapFade;
 +
 +	return mix(1.0, saturate(mapCoverage), weatherMapStrength);
 +#else
@@ -831,8 +1155,8 @@ index fbcfbd8..420eb11 100644
 +	return fract(sin(dot(voxelCoord, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
 +}
 +#endif
- 
- vec2 SampleDensity(vec4 cloudPos, vec3 windDirection, bool sampleDetail){
++
++vec2 SampleDensity(vec4 cloudPos, vec3 windDirection, bool sampleDetail, RevelationDayParams day){
 +	vec3 densityPos = cloudPos.xyz;
 +	vec3 coveragePos = densityPos;
 +	vec2 revelationCloudAdvection = RevelationCloudWeatherWorldDrift();
@@ -844,22 +1168,24 @@ index fbcfbd8..420eb11 100644
 +		densityPos = PixelatedCloudPos(densityPos, pixelStep);
 +	#endif
 +
-+	float revelationWeatherGate = RevelationCloudWeatherGate(cloudPos.xyz, windDirection);
-+
++	float revelationWeatherGate = RevelationCloudWeatherGate(cloudPos.xyz, windDirection, day);
+ 
+-vec2 SampleDensity(vec4 cloudPos, vec3 windDirection, bool sampleDetail){
  	//Base Noise
 -		vec4 baseNoise = textureLod(CloudNoise3D, cloudPos.xyz * CLOUD_BASE_NOISE_SCALE + windDirection * 10.0, 0.0);
-+		vec4 baseNoise = textureLod(CloudNoise3D, densityPos * CLOUD_BASE_NOISE_SCALE + windDirection * 10.0, 0.0);
++		vec4 baseNoise = textureLod(CloudNoise3D, densityPos * day.baseNoiseScale + windDirection * 10.0, 0.0);
  
  		float baseDensity = baseNoise.y * 0.4 + baseNoise.z * 0.4 + baseNoise.w * 0.2;
  		baseDensity = remapSaturate(baseNoise.x, baseDensity - 1.0, 1.0);
-@@ -14,12 +102,13 @@ vec2 SampleDensity(vec4 cloudPos, vec3 windDirection, bool sampleDetail){
+@@ -14,12 +425,13 @@ vec2 SampleDensity(vec4 cloudPos, vec3 windDirection, bool sampleDetail){
  		baseDensity *= mix(1.0, curveTop(saturate(cloudPos.w * 3.0)), wetness);
  
  	//Coverage
 -		float coverageNoise = textureLod(CloudNoise3D, cloudPos.xyz * vec3(8.5e-5, 1e-5, 8.5e-5) + windDirection + CLOUD_COVERAGE_NOISE_OFFSET, 0.0).x;
-+		float coverageNoise = textureLod(CloudNoise3D, coveragePos * vec3(8.5e-5, 1e-5, 8.5e-5) + windDirection + CLOUD_COVERAGE_NOISE_OFFSET, 0.0).x;
++		float coverageNoise = textureLod(CloudNoise3D, coveragePos * vec3(8.5e-5, 1e-5, 8.5e-5) + windDirection + day.coverageNoiseOffset, 0.0).x;
  
- 		float coverage = mix(CLOUD_CLEAR_COVERY, CLOUD_RAIN_COVERY, wetness);
+-		float coverage = mix(CLOUD_CLEAR_COVERY, CLOUD_RAIN_COVERY, wetness);
++		float coverage = mix(day.coverage, CLOUD_RAIN_COVERY, wetness);
  		coverage = remapSaturate(1.0 - coverageNoise, coverage * 0.2, coverage);
  
  		baseDensity = remapSaturate(baseDensity, coverage, 1.0); 
@@ -867,7 +1193,7 @@ index fbcfbd8..420eb11 100644
  
  	//Density Control
  		baseDensity *= curve(saturate(cloudPos.w * 1.8 - 0.8)) * 2.0 + 1.0;
-@@ -27,24 +116,106 @@ vec2 SampleDensity(vec4 cloudPos, vec3 windDirection, bool sampleDetail){
+@@ -27,24 +439,106 @@ vec2 SampleDensity(vec4 cloudPos, vec3 windDirection, bool sampleDetail){
  
  		baseDensity = saturate(baseDensity);
  
@@ -877,8 +1203,8 @@ index fbcfbd8..420eb11 100644
 +			vec3 occPosA = voxelCenter + vec3(0.34, -0.19, 0.27) * pixelStep;
 +			vec3 occPosB = voxelCenter + vec3(-0.31, 0.23, -0.29) * pixelStep;
 +
-+			vec4 occNoiseA = textureLod(CloudNoise3D, occPosA * CLOUD_BASE_NOISE_SCALE + windDirection * 10.0, 0.0);
-+			vec4 occNoiseB = textureLod(CloudNoise3D, occPosB * CLOUD_BASE_NOISE_SCALE + windDirection * 10.0, 0.0);
++			vec4 occNoiseA = textureLod(CloudNoise3D, occPosA * day.baseNoiseScale + windDirection * 10.0, 0.0);
++			vec4 occNoiseB = textureLod(CloudNoise3D, occPosB * day.baseNoiseScale + windDirection * 10.0, 0.0);
 +			float occA = occNoiseA.y * 0.4 + occNoiseA.z * 0.4 + occNoiseA.w * 0.2;
 +			float occB = occNoiseB.y * 0.4 + occNoiseB.z * 0.4 + occNoiseB.w * 0.2;
 +			occA = remapSaturate(occNoiseA.x, occA - 1.0, 1.0);
@@ -906,7 +1232,7 @@ index fbcfbd8..420eb11 100644
 +
 +			#if PIXELATED_CLOUD_OCCUPANCY > 1
 +				vec3 occPosC = voxelCenter + vec3(0.12, 0.33, 0.18) * pixelStep;
-+				vec4 occNoiseC = textureLod(CloudNoise3D, occPosC * CLOUD_BASE_NOISE_SCALE + windDirection * 10.0, 0.0);
++				vec4 occNoiseC = textureLod(CloudNoise3D, occPosC * day.baseNoiseScale + windDirection * 10.0, 0.0);
 +				float occC = occNoiseC.y * 0.4 + occNoiseC.z * 0.4 + occNoiseC.w * 0.2;
 +				occC = remapSaturate(occNoiseC.x, occC - 1.0, 1.0);
 +				occC *= shapeCurve;
@@ -946,11 +1272,11 @@ index fbcfbd8..420eb11 100644
 +			float curlNoise = textureLod(noisetex, detailPos.xy * 0.0001, 0.0).w;
 +			detailPos.xy += curlNoise * (60.0 - cloudPos.w * 60.0);
 +			detailPos = PixelatedCloudPos(detailPos, pixelStep);
-+			vec3 detailedNoise = textureLod(CloudDetailedNoise3D, detailPos * CLOUD_DETAILED_NOISE_SCALE + windDirection * 140.0, 0.0).xyz;
++			vec3 detailedNoise = textureLod(CloudDetailedNoise3D, detailPos * day.detailNoiseScale + windDirection * 140.0, 0.0).xyz;
  			detailedDensity = 1.0 - detailedNoise.x * 0.625 - detailedNoise.y * 0.25 - detailedNoise.z * 0.125;
 -			detailedDensity *= (0.21 - wetness * 0.11) * CLOUD_DETAILED_NOISE_STRENGTH;
 -
-+			detailedDensity *= (0.16 - wetness * 0.08) * CLOUD_DETAILED_NOISE_STRENGTH;
++			detailedDensity *= (0.16 - wetness * 0.08) * day.detailedNoiseStrength;
  			detailedDensity = remapSaturate(baseDensity, detailedDensity, 1.0);
 +			densityPos = voxelCenter;
 +		#else
@@ -962,9 +1288,9 @@ index fbcfbd8..420eb11 100644
 +				#endif
 +
 +			//Detailed Noise
-+				vec3 detailedNoise = textureLod(CloudDetailedNoise3D, densityPos * CLOUD_DETAILED_NOISE_SCALE + windDirection * 140.0, 0.0).xyz;
++				vec3 detailedNoise = textureLod(CloudDetailedNoise3D, densityPos * day.detailNoiseScale + windDirection * 140.0, 0.0).xyz;
 +				detailedDensity = 1.0 - detailedNoise.x * 0.625 - detailedNoise.y * 0.25 - detailedNoise.z * 0.125;
-+				detailedDensity *= (0.21 - wetness * 0.11) * CLOUD_DETAILED_NOISE_STRENGTH;
++				detailedDensity *= (0.21 - wetness * 0.11) * day.detailedNoiseStrength;
 +
 +				detailedDensity = remapSaturate(baseDensity, detailedDensity, 1.0);
 +		#endif
@@ -982,26 +1308,36 @@ index fbcfbd8..420eb11 100644
  	return vec2(baseDensity, detailedDensity);
  }
  
-@@ -72,7 +243,27 @@ vec3 CloudLighting(vec3 marchingPos, vec2 cloudAltitude, float planetRadius, flo
+@@ -58,21 +552,34 @@ vec4 SetCloudPos(vec3 marchingPos, vec2 cloudAltitude, float planetRadius, float
+ }
+ 
+ 
+-vec3 CloudLighting(vec3 marchingPos, vec2 cloudAltitude, float planetRadius, float cloudScale, vec2 lightingStrength, vec2 cloudDensity, vec4 cloudPos, vec3 colorSun, vec3 colorSky, vec3 windDirection, float noise, float VdotL){
++vec3 CloudLighting(vec3 marchingPos, vec2 cloudAltitude, float planetRadius, float cloudScale, vec2 lightingStrength, vec2 cloudDensity, vec4 cloudPos, vec3 colorSun, vec3 colorSky, vec3 windDirection, float noise, float VdotL, RevelationDayParams day){
+ 	float stepLength = 28.0;
+ 	float lightingDensity = 0.0;
+ 
+ 	for (int i = 0; i < 5; i++, marchingPos += worldShadowVector * stepLength, stepLength *= 1.5){
+ 		vec4 checkPos = SetCloudPos(marchingPos + worldShadowVector * stepLength * noise, cloudAltitude, planetRadius, cloudScale, windDirection);
+ 
+-		lightingDensity += SampleDensity(checkPos, windDirection, i < 3).y * stepLength;	
++		lightingDensity += SampleDensity(checkPos, windDirection, i < 3, day).y * stepLength;	
+ 	}
+ 
+ 	//Direct Scattering
  		float hg = HenyeyGreenstein(VdotL, 0.65);
  
- 		float directScattering = exp2(-lightingDensity * (cloudPos.w * 0.15 + 0.05)) * (hg + 0.02) * (1.0 - wetness * 0.8);
+-		float directScattering = exp2(-lightingDensity * (cloudPos.w * 0.15 + 0.05)) * (hg + 0.02) * (1.0 - wetness * 0.8);
 -		directScattering += (1.0 / (lightingDensity * 0.2 + 1.0)) * (HenyeyGreenstein(VdotL, 0.2) + 0.1);
++		float scatteringAttenuation = exp2(-lightingDensity * (cloudPos.w * 0.15 + 0.05)) * (1.0 - wetness * 0.8);
++		float primaryPhase = hg + 0.02;
++		float directScattering = scatteringAttenuation * primaryPhase;
 +
 +		#ifdef CLOUD_DUAL_LOBE_RENDERING
-+			// Rebuilt from scratch: a softer internal cloud-body lobe that mainly appears in denser,
-+			// side-lit regions instead of painting the whole cloud with a silver sheen.
-+			float densityBody = smoothstep(0.18, 0.72, cloudDensity.y);
-+			float edgeFade = 1.0 - smoothstep(0.78, 1.0, cloudDensity.y);
-+			float sideLight = 1.0 - smoothstep(0.35, 0.92, abs(VdotL));
-+			float softening = max(CLOUD_DUAL_LOBE_SOFTENING, 0.0);
-+			float bodyBlend = densityBody * edgeFade * sideLight * softening;
-+
-+			float bodyPhase = max(HenyeyGreenstein(VdotL, CLOUD_DUAL_LOBE_BODY_G) - 0.18, 0.0);
-+			float bodyScattering = (1.0 / (lightingDensity * 0.24 + 1.0)) * bodyPhase;
-+			bodyScattering *= CLOUD_DUAL_LOBE_BODY_STRENGTH * bodyBlend * 0.35;
-+
-+			directScattering += bodyScattering;
++			float softening = clamp(day.dualLobeSoftening, 0.0, 5.0);
++			float blendWeight = saturate(softening * 0.2);
++			float secondaryPhase = (HenyeyGreenstein(VdotL, day.dualLobeBodyG) + 0.06) * max(day.dualLobeBodyStrength, 0.0);
++			directScattering = scatteringAttenuation * mix(primaryPhase, secondaryPhase, blendWeight);
 +		#else
 +			directScattering += (1.0 / (lightingDensity * 0.2 + 1.0)) * (HenyeyGreenstein(VdotL, 0.2) + 0.1);
 +		#endif
@@ -1011,44 +1347,96 @@ index fbcfbd8..420eb11 100644
  
  		directScattering *= hg * 1.6 + 1.0;
  		directScattering *= mix(CLOUD_BOTTOM_BRIGHTNESS, 0.005 + pow(cloudDensity.y, CLOUD_OUTSCATTER_FACTOR), curve(saturate(cloudPos.w * 3.333 - 0.333)));
-@@ -91,7 +282,7 @@ vec3 CloudLighting(vec3 marchingPos, vec2 cloudAltitude, float planetRadius, flo
+@@ -85,28 +592,31 @@ vec3 CloudLighting(vec3 marchingPos, vec2 cloudAltitude, float planetRadius, flo
+ 		ambientScattering *= fsqrt(cloudPos.w);
+ 
+ 		cloudColor += colorSky * (ambientScattering * lightingStrength.y * 0.35);
+-
+ 	return cloudColor;
+ }
  
  
  
 -void NubisCumulus(inout vec3 color, vec3 worldDir, vec2 cloudAltitude, vec3 colorSun, vec3 colorSky, vec3 windDirection, vec3 camera, vec2 noise, out float cloudTransmittance){
 +void NubisCumulusDepthLimited(inout vec3 color, vec3 worldDir, vec2 cloudAltitude, vec3 colorSun, vec3 colorSky, vec3 windDirection, vec3 camera, vec2 noise, float maxLinearDepth, out float cloudTransmittance){
  	const float planetRadius = atmosphereModel_bottom_radius * 1e3;
++	RevelationDayParams day = ResolveRevelationDayParams();
++	float activeCloudBaseAltitude = mix(day.altitude, CLOUD_RAIN_ALTITUDE, wetness);
++	float activeCloudHeight = mix(day.height, CLOUD_RAIN_THICKNESS, wetness);
++	vec2 activeCloudAltitude = vec2(activeCloudBaseAltitude, activeCloudBaseAltitude + activeCloudHeight);
  
  	//Marching Setup
-@@ -128,6 +319,16 @@ void NubisCumulus(inout vec3 color, vec3 worldDir, vec2 cloudAltitude, vec3 colo
- 		float cloudScale = 			 mix(CLOUD_CLEAR_SCALE,       CLOUD_RAIN_SCALE,       wetness);
- 		float cloudDensityMul = 	 mix(CLOUD_CLEAR_DENSITY,     CLOUD_RAIN_DENSITY,     wetness);
- 		cloudDensityMul *= (cloudAltitude.y - cloudAltitude.x) * marchingStepSize * 0.6;
+ 		vec3 rayStartPos = vec3(0.0, planetRadius + cameraPosition.y, 0.0);
+-		vec2 iBottom = RaySphereIntersection(rayStartPos, worldDir, planetRadius + cloudAltitude.x);
+-		vec2 iTop = RaySphereIntersection(rayStartPos, worldDir, planetRadius + cloudAltitude.y);
++		vec2 iBottom = RaySphereIntersection(rayStartPos, worldDir, planetRadius + activeCloudAltitude.x);
++		vec2 iTop = RaySphereIntersection(rayStartPos, worldDir, planetRadius + activeCloudAltitude.y);
+ 
+-		vec2 iMarching = cameraPosition.y > cloudAltitude.y ? vec2(iTop.x, iBottom.x) : vec2(iBottom.y, iTop.y);
++		vec2 iMarching = cameraPosition.y > activeCloudAltitude.y ? vec2(iTop.x, iBottom.x) : vec2(iBottom.y, iTop.y);
+ 		vec3 marchingStart = iMarching.x * worldDir;
+ 		vec3 marchingEnd = iMarching.y * worldDir;
+ 
+-		float inCloud = (1.0 - saturate((cameraPosition.y - cloudAltitude.y) * 0.005)) *
+-						(1.0 - saturate((cloudAltitude.x - cameraPosition.y) * 0.005));
++		float inCloud = (1.0 - saturate((cameraPosition.y - activeCloudAltitude.y) * 0.005)) *
++						(1.0 - saturate((activeCloudAltitude.x - cameraPosition.y) * 0.005));
+ 
+-		float iInner = iBottom.y >= 0.0 && cameraPosition.y > cloudAltitude.x ? iBottom.x : iTop.y;
++		float iInner = iBottom.y >= 0.0 && cameraPosition.y > activeCloudAltitude.x ? iBottom.x : iTop.y;
+ 		iInner = min(iInner, 5000.0);
+ 
+ 		marchingStart = marchingStart * (1.0 - inCloud) + cameraPosition;
+@@ -119,15 +629,23 @@ void NubisCumulus(inout vec3 color, vec3 worldDir, vec2 cloudAltitude, vec3 colo
+ 
+ 		vec3 marchingIncrement = (marchingEnd - marchingStart) * marchingStepSize;
+ 		vec3 marchingPos = marchingStart + marchingIncrement * noise.x;
+-		float marchingLength = length(marchingIncrement);
+ 
+ 
+ 	//Cloud Properties
+ 		vec2 lightingStrength = vec2(mix(CLOUD_CLEAR_SUNLIGHTING, CLOUD_RAIN_SUNLIGHTING, wetness),
+ 									 mix(CLOUD_CLEAR_SKYLIGHTING, CLOUD_RAIN_SKYLIGHTING, wetness));
+-		float cloudScale = 			 mix(CLOUD_CLEAR_SCALE,       CLOUD_RAIN_SCALE,       wetness);
+-		float cloudDensityMul = 	 mix(CLOUD_CLEAR_DENSITY,     CLOUD_RAIN_DENSITY,     wetness);
+-		cloudDensityMul *= (cloudAltitude.y - cloudAltitude.x) * marchingStepSize * 0.6;
++		float cloudScale = 			 mix(day.scale,              CLOUD_RAIN_SCALE,       wetness);
++		float cloudDensityMul = 	 mix(day.density,            CLOUD_RAIN_DENSITY,     wetness);
++		cloudDensityMul *= (activeCloudAltitude.y - activeCloudAltitude.x) * marchingStepSize * 0.6;
 +		#if PIXELATED_CLOUDS > 0
 +			windDirection *= 0.25;
 +			marchingSteps = max(marchingSteps, floor(24.0 * CLOUD_QUALITY));
 +			marchingStepSize = 1.0 / marchingSteps;
 +			marchingIncrement = (marchingEnd - marchingStart) * marchingStepSize;
 +			marchingPos = marchingStart + marchingIncrement * noise.x;
-+			marchingLength = length(marchingIncrement);
-+			cloudDensityMul = mix(CLOUD_CLEAR_DENSITY, CLOUD_RAIN_DENSITY, wetness);
-+			cloudDensityMul *= (cloudAltitude.y - cloudAltitude.x) * marchingStepSize * 0.6;
++			cloudDensityMul = mix(day.density, CLOUD_RAIN_DENSITY, wetness);
++			cloudDensityMul *= (activeCloudAltitude.y - activeCloudAltitude.x) * marchingStepSize * 0.6;
 +		#endif
  
  		float VdotL = dot(worldDir, worldShadowVector);
  
-@@ -138,7 +339,9 @@ void NubisCumulus(inout vec3 color, vec3 worldDir, vec2 cloudAltitude, vec3 colo
+@@ -138,14 +656,16 @@ void NubisCumulus(inout vec3 color, vec3 worldDir, vec2 cloudAltitude, vec3 colo
  		vec3 rayHitPos = vec3(0.0);
  		float sumTransmit = 0.0;
  
 -		for (int i = 0; i < int(marchingSteps); i++, marchingPos += marchingIncrement){	
+-			vec4 cloudPos = SetCloudPos(marchingPos, cloudAltitude, planetRadius, cloudScale, windDirection);
 +		for (int i = 0; i < int(marchingSteps); i++, marchingPos += marchingIncrement){
 +			if (distance(marchingPos, cameraPosition) > maxLinearDepth) break;
-+
- 			vec4 cloudPos = SetCloudPos(marchingPos, cloudAltitude, planetRadius, cloudScale, windDirection);
  
- 			vec2 cloudDensity = SampleDensity(cloudPos, windDirection, true);
-@@ -171,7 +374,8 @@ void NubisCumulus(inout vec3 color, vec3 worldDir, vec2 cloudAltitude, vec3 colo
+-			vec2 cloudDensity = SampleDensity(cloudPos, windDirection, true);
++			vec4 cloudPos = SetCloudPos(marchingPos, activeCloudAltitude, planetRadius, cloudScale, windDirection);
++
++			vec2 cloudDensity = SampleDensity(cloudPos, windDirection, true, day);
+ 
+ 			if (cloudDensity.y < 1e-6) continue;
+ 
+-			vec3 cloudColor = CloudLighting(marchingPos, cloudAltitude, planetRadius, cloudScale, lightingStrength, cloudDensity, cloudPos, colorSun, colorSky, windDirection, noise.y, VdotL);
++			vec3 cloudColor = CloudLighting(marchingPos, activeCloudAltitude, planetRadius, cloudScale, lightingStrength, cloudDensity, cloudPos, colorSun, colorSky, windDirection, noise.y, VdotL, day);
+ 			float absorption = exp2(-cloudDensity.y * cloudDensityMul);
+ 
+ 			cloudAccum += cloudColor * (cloudTransmittance - absorption * cloudTransmittance);
+@@ -171,7 +691,8 @@ void NubisCumulus(inout vec3 color, vec3 worldDir, vec2 cloudAltitude, vec3 colo
  			if(cloudTransmittance < 0.9999){
  				vec3 atmoPoint = camera + rayHitPos * 0.001;
  				vec3 transmittance;
@@ -1058,7 +1446,7 @@ index fbcfbd8..420eb11 100644
  
  				color *= cloudTransmittanceFaded;
  
-@@ -185,7 +389,8 @@ void NubisCumulus(inout vec3 color, vec3 worldDir, vec2 cloudAltitude, vec3 colo
+@@ -185,7 +706,8 @@ void NubisCumulus(inout vec3 color, vec3 worldDir, vec2 cloudAltitude, vec3 colo
  
  				vec3 atmoPoint = camera + rayHitPos * 0.001;
  				vec3 transmittance;
@@ -1068,7 +1456,7 @@ index fbcfbd8..420eb11 100644
  
  				color *= cloudTransmittance;
  
-@@ -195,6 +400,10 @@ void NubisCumulus(inout vec3 color, vec3 worldDir, vec2 cloudAltitude, vec3 colo
+@@ -195,17 +717,25 @@ void NubisCumulus(inout vec3 color, vec3 worldDir, vec2 cloudAltitude, vec3 colo
  		#endif
  }
  
@@ -1078,9 +1466,21 @@ index fbcfbd8..420eb11 100644
 +
  
  float CloudShadowTex(vec2 coord, vec2 cloudAltitude, vec3 windDirection){
++	RevelationDayParams day = ResolveRevelationDayParams();
++	float activeCloudBaseAltitude = mix(day.altitude, CLOUD_RAIN_ALTITUDE, wetness);
++	float activeCloudHeight = mix(day.height, CLOUD_RAIN_THICKNESS, wetness);
++	cloudAltitude = vec2(activeCloudBaseAltitude, activeCloudBaseAltitude + activeCloudHeight);
  	coord = coord * CLOUD_SHADOW_RANGE - (CLOUD_SHADOW_RANGE * 0.5);
-@@ -208,4 +417,4 @@ float CloudShadowTex(vec2 coord, vec2 cloudAltitude, vec3 windDirection){
- 	cloudDensity = max(cloudDensity, SampleDensity(checkPos, windDirection, false).y);
+ 	vec4 checkPos = vec4(coord.x + cameraPosition.x, 0.0, coord.y + cameraPosition.z, 0.0);
+ 	float thickness = cloudAltitude.y - cloudAltitude.x;
+ 
+ 	checkPos += vec4(worldShadowVector * ((cloudAltitude.x + thickness * 0.25) / worldShadowVector.y) , 0.25);
+-	float cloudDensity = SampleDensity(checkPos, windDirection, false).y;
++	float cloudDensity = SampleDensity(checkPos, windDirection, false, day).y;
+ 	
+ 	checkPos += vec4(worldShadowVector * ((thickness * 0.25) / worldShadowVector.y) , 0.25);
+-	cloudDensity = max(cloudDensity, SampleDensity(checkPos, windDirection, false).y);
++	cloudDensity = max(cloudDensity, SampleDensity(checkPos, windDirection, false, day).y);
  
  	return exp2(-cloudDensity * 20.0);
 -}
@@ -3678,7 +4078,7 @@ index 0000000..3d40346
 +	#endif
 +}
 diff --git a/shaders/Lib/Programs/Final_FS.glsl b/shaders/Lib/Programs/Final_FS.glsl
-index 346c6ca..b5c422b 100644
+index 346c6ca..5fec089 100644
 --- a/shaders/Lib/Programs/Final_FS.glsl
 +++ b/shaders/Lib/Programs/Final_FS.glsl
 @@ -2,6 +2,7 @@
@@ -3719,16 +4119,66 @@ index 346c6ca..b5c422b 100644
  vec3 ACES(vec3 color){
  	color *= 1.4;
  
-@@ -316,6 +333,8 @@ float Vignette(vec2 coord, const float falloff, const float roundness){
+@@ -314,6 +331,58 @@ float Vignette(vec2 coord, const float falloff, const float roundness){
+ 	return 1.0 / (rf * rf);
+ }
  
- 
- 
++float hash3_fg(vec3 p3) {
++	p3  = fract(p3 * .1031);
++	p3 += dot(p3, p3.yzx + 33.33);
++	return fract((p3.x + p3.y) * p3.z);
++}
++
++float smoothNoise_fg(vec2 uv, float seed, float scale) {
++	vec2 p = uv * scale;
++	vec2 i = floor(p);
++	vec2 f = fract(p);
++	f = f * f * (3.0 - 2.0 * f);
++
++	float n00 = hash3_fg(vec3(i, seed));
++	float n10 = hash3_fg(vec3(i + vec2(1.0, 0.0), seed));
++	float n01 = hash3_fg(vec3(i + vec2(0.0, 1.0), seed));
++	float n11 = hash3_fg(vec3(i + vec2(1.0, 1.0), seed));
++
++	float nx0 = mix(n00, n10, f.x);
++	float nx1 = mix(n01, n11, f.x);
++
++	return mix(nx0, nx1, f.y);
++}
++
++vec3 getFilmGrain(vec3 color, vec2 uv) {
++	float grainSize = FILM_GRAIN_SIZE;
++	float grainIntensity = FILM_GRAIN_INTENSITY;
++
++	float timeSeed = fract(float(frameCounter % 10000) * 0.61803398875);
++
++	vec3 noise;
++	float scale = screenSize.y / grainSize;
++	noise.r = smoothNoise_fg(uv, timeSeed + 13.37, scale);
++	noise.g = smoothNoise_fg(uv, timeSeed + 42.11, scale);
++	noise.b = smoothNoise_fg(uv, timeSeed + 91.07, scale);
++
++	noise = noise * 2.0 - 1.0;
++
++	float luma = Luminance(color);
++	float mask = exp(-pow((luma - 0.4) * 2.5, 2.0));
++	mask = max(mask, 0.05);
++
++	vec3 grainOffset = noise * grainIntensity * mask;
++	vec3 blendLayer = grainOffset * 0.5 + 0.5;
++
++	vec3 lowBranch = color - (1.0 - 2.0 * blendLayer) * color * (1.0 - color);
++	vec3 highBranch = color + (2.0 * blendLayer - 1.0) * (sqrt(color) - color);
++
++	return mix(lowBranch, highBranch, step(vec3(0.5), blendLayer));
++}
 +
 +
++
+ 
+ 
  #ifdef PT_TRACING_EYE
- 
- uniform sampler2D shadowtex0;
-@@ -499,7 +518,10 @@ vec3 PathTracingEye(vec3 worldDir){
+@@ -499,7 +568,10 @@ vec3 PathTracingEye(vec3 worldDir){
  
  				#ifdef DIMENSION_OVERWORLD
  				#ifdef SUNLIGHT_LEAK_FIX
@@ -3740,7 +4190,7 @@ index 346c6ca..b5c422b 100644
  				#endif
  				#endif
  
-@@ -597,6 +619,44 @@ vec3 EquirectToDirection(vec2 uv) {
+@@ -597,6 +669,44 @@ vec3 EquirectToDirection(vec2 uv) {
  
  uniform sampler2D pixelData2D;
  //*/
@@ -3785,7 +4235,7 @@ index 346c6ca..b5c422b 100644
  /////////////////////////MAIN//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
  /////////////////////////MAIN//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
  void main(){
-@@ -625,16 +685,31 @@ void main(){
+@@ -625,16 +735,31 @@ void main(){
  		if (hideGUI > 0) color = color * 0.5 + texelFetch(FBTEX_ALBEDO, texelCoord, 0).rgb * 0.5;
  
  	#else
@@ -3824,7 +4274,7 @@ index 346c6ca..b5c422b 100644
  
  		color = TONEMAP_OPERATOR(color);
  
-@@ -643,6 +718,20 @@ void main(){
+@@ -643,6 +768,25 @@ void main(){
  		#ifdef ADVANCED_COLOR
  			color = ColorGrading(color);
  		#endif
@@ -3839,13 +4289,18 @@ index 346c6ca..b5c422b 100644
 +
 +		color = ApplyInjectedLut(color);
 +
++		#ifdef FILM_GRAIN
++			vec2 grainCoord = (vec2(texelCoord) + 0.5) * pixelSize;
++			color = getFilmGrain(color, grainCoord);
++		#endif
++
 +		#ifdef VIGNETTE
 +			color *= Vignette(texCoord, VIGNETTE_FALLOFF, VIGNETTE_ROUNDNESS);
 +		#endif
  /*
  		#ifdef HAS_COLORWHEEL
  			#ifdef SUPER_RESOLUTION
-@@ -895,8 +984,6 @@ uniform sampler2D rtwImportance2D;
+@@ -895,8 +1039,6 @@ uniform sampler2D rtwImportance2D;
  
  //uniform sampler2D prevDepth2D;
  
@@ -3854,7 +4309,7 @@ index 346c6ca..b5c422b 100644
  /////////////////////////MAIN//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
  /////////////////////////MAIN//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
  void main(){
-@@ -1030,9 +1117,7 @@ void main(){
+@@ -1030,9 +1172,7 @@ void main(){
  
  
  	//color = vec3(pow(texelFetch(depthtex0, texelCoord, 0).x, 100.0));
@@ -3865,7 +4320,7 @@ index 346c6ca..b5c422b 100644
  	//color = vec3(pow(0.9992 - texelFetch(FBTEX_MAIN_TEMPORAL, texelCoord, 0).w, 2000.0));
  	//color = vec3(abs(texelFetch(FBTEX_MAIN_TEMPORAL, texelCoord, 0).w) * 1000.0);
  	//color = vec3(pow(texelFetch(prevDepth2D, texelCoord, 0).x, 100.0));
-@@ -1040,8 +1125,6 @@ void main(){
+@@ -1040,8 +1180,6 @@ void main(){
  	//color = vec3(pow(texelFetch(waterDepth2D, texelCoord, 0).x, 10000.0));
  	//color = texelFetch(vxDepthTexOpaque, texelCoord, 0).xxx;
  
@@ -3874,7 +4329,97 @@ index 346c6ca..b5c422b 100644
  	//color = vec3(texelFetch(ripple2D, texelCoord / 5 + ivec2(0, (frameCounter % 60) * 128), 0).z >= 1.0);
  
  	//vec3 rp = texelFetch(ripple2D, texelCoord / 5, 0).xyz;
-@@ -1298,6 +1381,19 @@ if (angle <= 1.0){
+@@ -1178,77 +1316,23 @@ void main(){
+ #endif
+ 
+ 	#ifdef DEBUG_COUNTER
+-		color = saturate(color);
+ 		vec2 tCoord = gl_FragCoord.xy;
+ 		float scale = 4.0;
++		ivec2 centerTexel = ivec2(screenSize * 0.5);
++		vec3 centerColor = texelFetch(FBTEX_MAIN_OUTPUT, centerTexel, 0).rgb;
++		centerColor = max(centerColor, vec3(0.0));
+ 
+-		//mat4 tmat = dhProjectionInverse;
++		float centerPeakNits;
++		#ifdef HDR_ENABLED
++			centerPeakNits = max(centerColor.r, max(centerColor.g, centerColor.b)) * HdrGamePeakBrightness;
++		#else
++			centerPeakNits = max(centerColor.r, max(centerColor.g, centerColor.b)) * 100.0;
++		#endif
+ 
+-		if (clamp(tCoord, vec2(0.0), vec2(300.0, 50.0) * scale) == tCoord){
++		vec2 meterOrigin = floor(screenSize * 0.5 + vec2(14.0, -6.0) * scale);
++		if (clamp(tCoord, meterOrigin - vec2(4.0, 4.0), meterOrigin + vec2(70.0, 12.0) * scale) == tCoord){
+ 			color = clamp(color.rgb * 0.5, vec3(0.0), vec3(0.8));
+-
+-			//color += PrintFloat(texelFetch(pixelData2D, ivec2(PIXELDATA_EXPOSURE, 0), 0).x, vec2(50.0, 35.0) * scale, scale);
+-			color += PrintFloat(sunAngle, vec2(50.0, 35.0) * scale, scale);
+-
+-			//color += PrintFloat(dgc.x, vec2(300.0, 235.0) * scale, scale);
+-			//color += PrintFloat(SRJitterOffset.y, vec2(300.0, 225.0) * scale, scale);
+-			//color += PrintFloat(SRPreviousJitterOffset.x, vec2(300.0, 215.0) * scale, scale);
+-			//color += PrintFloat(SRPreviousJitterOffset.y, vec2(300.0, 205.0) * scale, scale);
+-			//color += PrintFloat(fsqrt(length(cameraPositionToPrevious)) * 5.0, vec2(150.0, 25.0) * scale, scale);
+-
+-//*
+-
+-			vec3 t = Blackbody(8000.0);
+-			color += PrintFloat(t.x, vec2(50.0, 35.0) * scale, scale);
+-			color += PrintFloat(t.y, vec2(50.0, 25.0) * scale, scale);
+-			color += PrintFloat(t.z, vec2(50.0, 15.0) * scale, scale);
+-		
+-
+-			//const float vx = 21;
+-
+-			//const vec2 vwh = vec2(512, 512);
+-
+-			//const float vy = ceil(vwh.y / vx);
+-
+-			//color += PrintFloat(vx * vwh.x + 2048.0, vec2(50.0, 35.0) * scale, scale);
+-			//color += PrintFloat(vy * vwh.x, vec2(50.0, 25.0) * scale, scale);
+-			//color += PrintFloat(vx * vwh.x, vec2(50.0, 5.0) * scale, scale);
+-//*/
+-
+-
+-			//color += PrintFloat(LinearDepth_From_ScreenDepth(ScreenDepth_From_LODScreenDepth(texelFetch(LOD_DEPTH_TEX_0, ivec2(screenSize * 0.5), 0).x)), vec2(50.0, 35.0) * scale, scale);
+-			//color += PrintFloat(texelFetch(FBTEX_MAIN_TEMPORAL, ivec2(2, 0), 0).a, vec2(50.0, 25.0) * scale, scale);
+-
+-
+-
+-			//vec2 r2 = Sequences_R2(16.0) * 2.0 - 1.0;
+-
+-
+-			//color += PrintFloat(r2.x, vec2(50.0, 35.0) * scale, scale);
+-			//color += PrintFloat(r2.y, vec2(50.0, 25.0) * scale, scale);
+-			
+-
+-/*
+-			color += PrintFloat(tmat[0][0], vec2(50.0, 35.0) * scale, scale);
+-			color += PrintFloat(tmat[1][0], vec2(100.0, 35.0) * scale, scale);
+-			color += PrintFloat(tmat[2][0], vec2(150.0, 35.0) * scale, scale);
+-			color += PrintFloat(tmat[3][0], vec2(200.0, 35.0) * scale, scale);
+-
+-			color += PrintFloat(tmat[0][1], vec2(50.0, 25.0) * scale, scale);
+-			color += PrintFloat(tmat[1][1], vec2(100.0, 25.0) * scale, scale);
+-			color += PrintFloat(tmat[2][1], vec2(150.0, 25.0) * scale, scale);
+-			color += PrintFloat(tmat[3][1], vec2(200.0, 25.0) * scale, scale);
+-
+-			color += PrintFloat(tmat[0][2], vec2(50.0, 15.0) * scale, scale);
+-			color += PrintFloat(tmat[1][2], vec2(100.0, 15.0) * scale, scale);
+-			color += PrintFloat(tmat[2][2], vec2(150.0, 15.0) * scale, scale);
+-			color += PrintFloat(tmat[3][2], vec2(200.0, 15.0) * scale, scale);
+-
+-			color += PrintFloat(tmat[0][3], vec2(50.0, 5.0) * scale, scale);
+-			color += PrintFloat(tmat[1][3], vec2(100.0, 5.0) * scale, scale);
+-			color += PrintFloat(tmat[2][3], vec2(150.0, 5.0) * scale, scale);
+-			color += PrintFloat(tmat[3][3], vec2(200.0, 5.0) * scale, scale);
+-//*/		
++			color += PrintFloat(centerPeakNits, meterOrigin, scale);
+ 		}
+ 	#endif
+ 
+@@ -1298,6 +1382,19 @@ if (angle <= 1.0){
  
  	//if (texelCoord.x < 400) color = vec3(1.3);
  
@@ -4133,7 +4678,7 @@ index a40193d..51cb1b4 100644
 +};
 +
 diff --git a/shaders/Lib/Settings.glsl b/shaders/Lib/Settings.glsl
-index 621004b..d2df6b1 100644
+index 621004b..79236c7 100644
 --- a/shaders/Lib/Settings.glsl
 +++ b/shaders/Lib/Settings.glsl
 @@ -440,6 +440,13 @@ const float monocleFix = 0.0 / 0.0;
@@ -4160,14 +4705,14 @@ index 621004b..d2df6b1 100644
  //Volumtric Clouds----------------------
  	#define VOLUMETRIC_CLOUDS
  	#define CLOUD_QUALITY 					1.0 	// [0.4 0.6 0.8 1.0 1.2 1.4 1.6 1.8 2.0 2.5 3.0 5.0 7.0 10.0]
-@@ -555,7 +565,19 @@ const float monocleFix = 0.0 / 0.0;
+@@ -555,7 +565,192 @@ const float monocleFix = 0.0 / 0.0;
  	#define CLOUD_DETAILED_NOISE_SCALE 		0.007 	// [0.001 0.002 0.003 0.004 0.005 0.006 0.007 0.008 0.009 0.01 0.011 0.012 0.013 0.014 0.015 0.016 0.017 0.018 0.019 0.02]
  	#define CLOUD_BOTTOM_BRIGHTNESS 		0.15 	// [0.01 0.02 0.03 0.05 0.07 0.1 0.15 0.2 0.3 0.5 0.7 1.0]
  	#define CLOUD_OUTSCATTER_FACTOR 		1.3 	// [0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0]
 +	#define CLOUD_DUAL_LOBE_RENDERING
-+	#define CLOUD_DUAL_LOBE_SOFTENING 		1.0 	// [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.2 1.5 2.0]
++	#define CLOUD_DUAL_LOBE_SOFTENING 		2.0 	// [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.2 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0]
 +	#define CLOUD_DUAL_LOBE_BODY_G 		0.15 	// [0.0 0.05 0.1 0.15 0.2 0.25 0.3 0.35 0.4]
-+	#define CLOUD_DUAL_LOBE_BODY_STRENGTH 	1.0 	// [0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.5 2.0]
++	#define CLOUD_DUAL_LOBE_BODY_STRENGTH 	2.0 	// [0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0]
  	#define CLOUD_COVERAGE_NOISE_OFFSET 	0.68 	// [0.0 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.3 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.4 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.5 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.6 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.8 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99]
 +	#define CLOUD_REVELATION_WEATHER_MAP
 +	#define CLOUD_REVELATION_WEATHER_SCALE 	72000.0 // [24000.0 32000.0 40000.0 48000.0 56000.0 64000.0 72000.0 80000.0 96000.0 128000.0]
@@ -4177,10 +4722,183 @@ index 621004b..d2df6b1 100644
 +	#define CLOUD_REVELATION_LOCAL_NOISE 	0.2 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
 +	#define CLOUD_REVELATION_WEATHER_DRIFT 	5.0 // [2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0 10.0]
 +	#define CLOUD_ANIMATION_TYPE 0 // [0 1]
++	#define CLOUD_REVELATION_DAY_MODE 	0 // [0 1 2 3]
++	#define CLOUD_REVELATION_MANUAL_DAY 	1 // [1 2 3 4 5 6 7 8 9 10]
++	#define CLOUD_REVELATION_DAY_TRANSITION_SPEED 	1.0 // [0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
++
++	#define CLOUD_REV_DAY0_ALTITUDE 	1000.0 // [300.0 400.0 500.0 600.0 700.0 800.0 900.0 1000.0 1100.0 1200.0 1300.0 1400.0 1500.0 1600.0 1700.0 1800.0 1900.0 2000.0 2100.0 2200.0 2300.0 2400.0 2500.0 2600.0 2700.0 2800.0 2900.0 3000.0 3100.0 3200.0 3300.0 3400.0 3500.0 3600.0 3700.0 3800.0 3900.0 4000.0 4100.0 4200.0 4300.0 4400.0 4500.0 4600.0 4700.0 4800.0 4900.0 5000.0 5100.0 5200.0 5300.0 5400.0 5500.0 5600.0 5700.0 5800.0 5900.0 6000.0]
++	#define CLOUD_REV_DAY0_HEIGHT 	600.0 // [100.0 150.0 200.0 250.0 300.0 350.0 400.0 450.0 500.0 550.0 600.0 650.0 700.0 750.0 800.0 850.0 900.0 950.0 1000.0 1100.0 1200.0 1300.0 1400.0 1500.0 1600.0 1700.0 1800.0 1900.0 2000.0 2250.0 2500.0 2750.0 3000.0 4000.0 5000.0]
++	#define CLOUD_REV_DAY0_COVERY 	0.9 // [0.1 0.12 0.14 0.16 0.18 0.2 0.22 0.24 0.26 0.28 0.3 0.32 0.34 0.36 0.38 0.4 0.42 0.44 0.46 0.48 0.5 0.52 0.54 0.56 0.58 0.6 0.62 0.64 0.66 0.68 0.7 0.72 0.74 0.76 0.78 0.8 0.82 0.84 0.86 0.88 0.9 0.92 0.94 0.96 0.98 1.0 1.1 1.2 1.3 1.4 1.5]
++	#define CLOUD_REV_DAY0_DENSITY 	1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0 8.0 10.0]
++	#define CLOUD_REV_DAY0_WEATHER_LOW 	0.30 // [0.20 0.25 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75 0.80]
++	#define CLOUD_REV_DAY0_WEATHER_HIGH 	0.95 // [0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00]
++	#define CLOUD_REV_DAY0_SCALE 	1.0 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0]
++	#define CLOUD_REV_DAY0_WEATHER_STRENGTH 	1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
++	#define CLOUD_REV_DAY0_LOCAL_NOISE 	0.2 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
++	#define CLOUD_REV_DAY0_BASE_NOISE_SCALE 	0.001 // [0.0001 0.00015 0.0002 0.00025 0.0003 0.00035 0.0004 0.00045 0.0005 0.00055 0.0006 0.00065 0.0007 0.00075 0.0008 0.00085 0.0009 0.00095 0.001 0.0011 0.0012 0.0014 0.0015 0.0016 0.0017 0.0018 0.0019 0.002]
++	#define CLOUD_REV_DAY0_DETAIL_NOISE_SCALE 	0.007 // [0.001 0.002 0.003 0.004 0.005 0.006 0.007 0.008 0.009 0.01 0.011 0.012 0.013 0.014 0.015 0.016 0.017 0.018 0.019 0.02]
++	#define CLOUD_REV_DAY0_COVERAGE_NOISE_OFFSET 	0.68 // [0.0 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.3 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.4 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.5 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.6 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.8 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99]
++	#define CLOUD_REV_DAY0_DETAILED_NOISE_STRENGTH 	1.0 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 3.5 4.0]
++	#define CLOUD_REV_DAY0_DUAL_SOFTENING 	2.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.2 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0]
++	#define CLOUD_REV_DAY0_DUAL_BODY_G 	0.15 // [0.0 0.05 0.1 0.15 0.2 0.25 0.3 0.35 0.4]
++	#define CLOUD_REV_DAY0_DUAL_BODY_STRENGTH 	2.0 // [0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0]
++
++	#define CLOUD_REV_DAY1_ALTITUDE 	1000.0 // [300.0 400.0 500.0 600.0 700.0 800.0 900.0 1000.0 1100.0 1200.0 1300.0 1400.0 1500.0 1600.0 1700.0 1800.0 1900.0 2000.0 2100.0 2200.0 2300.0 2400.0 2500.0 2600.0 2700.0 2800.0 2900.0 3000.0 3100.0 3200.0 3300.0 3400.0 3500.0 3600.0 3700.0 3800.0 3900.0 4000.0 4100.0 4200.0 4300.0 4400.0 4500.0 4600.0 4700.0 4800.0 4900.0 5000.0 5100.0 5200.0 5300.0 5400.0 5500.0 5600.0 5700.0 5800.0 5900.0 6000.0]
++	#define CLOUD_REV_DAY1_HEIGHT 	600.0 // [100.0 150.0 200.0 250.0 300.0 350.0 400.0 450.0 500.0 550.0 600.0 650.0 700.0 750.0 800.0 850.0 900.0 950.0 1000.0 1100.0 1200.0 1300.0 1400.0 1500.0 1600.0 1700.0 1800.0 1900.0 2000.0 2250.0 2500.0 2750.0 3000.0 4000.0 5000.0]
++	#define CLOUD_REV_DAY1_COVERY 	0.9 // [0.1 0.12 0.14 0.16 0.18 0.2 0.22 0.24 0.26 0.28 0.3 0.32 0.34 0.36 0.38 0.4 0.42 0.44 0.46 0.48 0.5 0.52 0.54 0.56 0.58 0.6 0.62 0.64 0.66 0.68 0.7 0.72 0.74 0.76 0.78 0.8 0.82 0.84 0.86 0.88 0.9 0.92 0.94 0.96 0.98 1.0 1.1 1.2 1.3 1.4 1.5]
++	#define CLOUD_REV_DAY1_DENSITY 	1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0 8.0 10.0]
++	#define CLOUD_REV_DAY1_WEATHER_LOW 	0.30 // [0.20 0.25 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75 0.80]
++	#define CLOUD_REV_DAY1_WEATHER_HIGH 	0.95 // [0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00]
++	#define CLOUD_REV_DAY1_SCALE 	1.0 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0]
++	#define CLOUD_REV_DAY1_WEATHER_STRENGTH 	1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
++	#define CLOUD_REV_DAY1_LOCAL_NOISE 	0.2 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
++	#define CLOUD_REV_DAY1_BASE_NOISE_SCALE 	0.001 // [0.0001 0.00015 0.0002 0.00025 0.0003 0.00035 0.0004 0.00045 0.0005 0.00055 0.0006 0.00065 0.0007 0.00075 0.0008 0.00085 0.0009 0.00095 0.001 0.0011 0.0012 0.0014 0.0015 0.0016 0.0017 0.0018 0.0019 0.002]
++	#define CLOUD_REV_DAY1_DETAIL_NOISE_SCALE 	0.007 // [0.001 0.002 0.003 0.004 0.005 0.006 0.007 0.008 0.009 0.01 0.011 0.012 0.013 0.014 0.015 0.016 0.017 0.018 0.019 0.02]
++	#define CLOUD_REV_DAY1_COVERAGE_NOISE_OFFSET 	0.68 // [0.0 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.3 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.4 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.5 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.6 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.8 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99]
++	#define CLOUD_REV_DAY1_DETAILED_NOISE_STRENGTH 	1.0 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 3.5 4.0]
++	#define CLOUD_REV_DAY1_DUAL_SOFTENING 	2.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.2 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0]
++	#define CLOUD_REV_DAY1_DUAL_BODY_G 	0.15 // [0.0 0.05 0.1 0.15 0.2 0.25 0.3 0.35 0.4]
++	#define CLOUD_REV_DAY1_DUAL_BODY_STRENGTH 	2.0 // [0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0]
++
++	#define CLOUD_REV_DAY2_ALTITUDE 	1000.0 // [300.0 400.0 500.0 600.0 700.0 800.0 900.0 1000.0 1100.0 1200.0 1300.0 1400.0 1500.0 1600.0 1700.0 1800.0 1900.0 2000.0 2100.0 2200.0 2300.0 2400.0 2500.0 2600.0 2700.0 2800.0 2900.0 3000.0 3100.0 3200.0 3300.0 3400.0 3500.0 3600.0 3700.0 3800.0 3900.0 4000.0 4100.0 4200.0 4300.0 4400.0 4500.0 4600.0 4700.0 4800.0 4900.0 5000.0 5100.0 5200.0 5300.0 5400.0 5500.0 5600.0 5700.0 5800.0 5900.0 6000.0]
++	#define CLOUD_REV_DAY2_HEIGHT 	600.0 // [100.0 150.0 200.0 250.0 300.0 350.0 400.0 450.0 500.0 550.0 600.0 650.0 700.0 750.0 800.0 850.0 900.0 950.0 1000.0 1100.0 1200.0 1300.0 1400.0 1500.0 1600.0 1700.0 1800.0 1900.0 2000.0 2250.0 2500.0 2750.0 3000.0 4000.0 5000.0]
++	#define CLOUD_REV_DAY2_COVERY 	0.9 // [0.1 0.12 0.14 0.16 0.18 0.2 0.22 0.24 0.26 0.28 0.3 0.32 0.34 0.36 0.38 0.4 0.42 0.44 0.46 0.48 0.5 0.52 0.54 0.56 0.58 0.6 0.62 0.64 0.66 0.68 0.7 0.72 0.74 0.76 0.78 0.8 0.82 0.84 0.86 0.88 0.9 0.92 0.94 0.96 0.98 1.0 1.1 1.2 1.3 1.4 1.5]
++	#define CLOUD_REV_DAY2_DENSITY 	1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0 8.0 10.0]
++	#define CLOUD_REV_DAY2_WEATHER_LOW 	0.30 // [0.20 0.25 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75 0.80]
++	#define CLOUD_REV_DAY2_WEATHER_HIGH 	0.95 // [0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00]
++	#define CLOUD_REV_DAY2_SCALE 	1.0 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0]
++	#define CLOUD_REV_DAY2_WEATHER_STRENGTH 	1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
++	#define CLOUD_REV_DAY2_LOCAL_NOISE 	0.2 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
++	#define CLOUD_REV_DAY2_BASE_NOISE_SCALE 	0.001 // [0.0001 0.00015 0.0002 0.00025 0.0003 0.00035 0.0004 0.00045 0.0005 0.00055 0.0006 0.00065 0.0007 0.00075 0.0008 0.00085 0.0009 0.00095 0.001 0.0011 0.0012 0.0014 0.0015 0.0016 0.0017 0.0018 0.0019 0.002]
++	#define CLOUD_REV_DAY2_DETAIL_NOISE_SCALE 	0.007 // [0.001 0.002 0.003 0.004 0.005 0.006 0.007 0.008 0.009 0.01 0.011 0.012 0.013 0.014 0.015 0.016 0.017 0.018 0.019 0.02]
++	#define CLOUD_REV_DAY2_COVERAGE_NOISE_OFFSET 	0.68 // [0.0 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.3 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.4 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.5 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.6 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.8 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99]
++	#define CLOUD_REV_DAY2_DETAILED_NOISE_STRENGTH 	1.0 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 3.5 4.0]
++	#define CLOUD_REV_DAY2_DUAL_SOFTENING 	2.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.2 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0]
++	#define CLOUD_REV_DAY2_DUAL_BODY_G 	0.15 // [0.0 0.05 0.1 0.15 0.2 0.25 0.3 0.35 0.4]
++	#define CLOUD_REV_DAY2_DUAL_BODY_STRENGTH 	2.0 // [0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0]
++
++	#define CLOUD_REV_DAY3_ALTITUDE 	1000.0 // [300.0 400.0 500.0 600.0 700.0 800.0 900.0 1000.0 1100.0 1200.0 1300.0 1400.0 1500.0 1600.0 1700.0 1800.0 1900.0 2000.0 2100.0 2200.0 2300.0 2400.0 2500.0 2600.0 2700.0 2800.0 2900.0 3000.0 3100.0 3200.0 3300.0 3400.0 3500.0 3600.0 3700.0 3800.0 3900.0 4000.0 4100.0 4200.0 4300.0 4400.0 4500.0 4600.0 4700.0 4800.0 4900.0 5000.0 5100.0 5200.0 5300.0 5400.0 5500.0 5600.0 5700.0 5800.0 5900.0 6000.0]
++	#define CLOUD_REV_DAY3_HEIGHT 	600.0 // [100.0 150.0 200.0 250.0 300.0 350.0 400.0 450.0 500.0 550.0 600.0 650.0 700.0 750.0 800.0 850.0 900.0 950.0 1000.0 1100.0 1200.0 1300.0 1400.0 1500.0 1600.0 1700.0 1800.0 1900.0 2000.0 2250.0 2500.0 2750.0 3000.0 4000.0 5000.0]
++	#define CLOUD_REV_DAY3_COVERY 	0.9 // [0.1 0.12 0.14 0.16 0.18 0.2 0.22 0.24 0.26 0.28 0.3 0.32 0.34 0.36 0.38 0.4 0.42 0.44 0.46 0.48 0.5 0.52 0.54 0.56 0.58 0.6 0.62 0.64 0.66 0.68 0.7 0.72 0.74 0.76 0.78 0.8 0.82 0.84 0.86 0.88 0.9 0.92 0.94 0.96 0.98 1.0 1.1 1.2 1.3 1.4 1.5]
++	#define CLOUD_REV_DAY3_DENSITY 	1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0 8.0 10.0]
++	#define CLOUD_REV_DAY3_WEATHER_LOW 	0.30 // [0.20 0.25 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75 0.80]
++	#define CLOUD_REV_DAY3_WEATHER_HIGH 	0.95 // [0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00]
++	#define CLOUD_REV_DAY3_SCALE 	1.0 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0]
++	#define CLOUD_REV_DAY3_WEATHER_STRENGTH 	1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
++	#define CLOUD_REV_DAY3_LOCAL_NOISE 	0.2 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
++	#define CLOUD_REV_DAY3_BASE_NOISE_SCALE 	0.001 // [0.0001 0.00015 0.0002 0.00025 0.0003 0.00035 0.0004 0.00045 0.0005 0.00055 0.0006 0.00065 0.0007 0.00075 0.0008 0.00085 0.0009 0.00095 0.001 0.0011 0.0012 0.0014 0.0015 0.0016 0.0017 0.0018 0.0019 0.002]
++	#define CLOUD_REV_DAY3_DETAIL_NOISE_SCALE 	0.007 // [0.001 0.002 0.003 0.004 0.005 0.006 0.007 0.008 0.009 0.01 0.011 0.012 0.013 0.014 0.015 0.016 0.017 0.018 0.019 0.02]
++	#define CLOUD_REV_DAY3_COVERAGE_NOISE_OFFSET 	0.68 // [0.0 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.3 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.4 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.5 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.6 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.8 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99]
++	#define CLOUD_REV_DAY3_DETAILED_NOISE_STRENGTH 	1.0 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 3.5 4.0]
++	#define CLOUD_REV_DAY3_DUAL_SOFTENING 	2.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.2 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0]
++	#define CLOUD_REV_DAY3_DUAL_BODY_G 	0.15 // [0.0 0.05 0.1 0.15 0.2 0.25 0.3 0.35 0.4]
++	#define CLOUD_REV_DAY3_DUAL_BODY_STRENGTH 	2.0 // [0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0]
++
++	#define CLOUD_REV_DAY4_ALTITUDE 	1000.0 // [300.0 400.0 500.0 600.0 700.0 800.0 900.0 1000.0 1100.0 1200.0 1300.0 1400.0 1500.0 1600.0 1700.0 1800.0 1900.0 2000.0 2100.0 2200.0 2300.0 2400.0 2500.0 2600.0 2700.0 2800.0 2900.0 3000.0 3100.0 3200.0 3300.0 3400.0 3500.0 3600.0 3700.0 3800.0 3900.0 4000.0 4100.0 4200.0 4300.0 4400.0 4500.0 4600.0 4700.0 4800.0 4900.0 5000.0 5100.0 5200.0 5300.0 5400.0 5500.0 5600.0 5700.0 5800.0 5900.0 6000.0]
++	#define CLOUD_REV_DAY4_HEIGHT 	600.0 // [100.0 150.0 200.0 250.0 300.0 350.0 400.0 450.0 500.0 550.0 600.0 650.0 700.0 750.0 800.0 850.0 900.0 950.0 1000.0 1100.0 1200.0 1300.0 1400.0 1500.0 1600.0 1700.0 1800.0 1900.0 2000.0 2250.0 2500.0 2750.0 3000.0 4000.0 5000.0]
++	#define CLOUD_REV_DAY4_COVERY 	0.9 // [0.1 0.12 0.14 0.16 0.18 0.2 0.22 0.24 0.26 0.28 0.3 0.32 0.34 0.36 0.38 0.4 0.42 0.44 0.46 0.48 0.5 0.52 0.54 0.56 0.58 0.6 0.62 0.64 0.66 0.68 0.7 0.72 0.74 0.76 0.78 0.8 0.82 0.84 0.86 0.88 0.9 0.92 0.94 0.96 0.98 1.0 1.1 1.2 1.3 1.4 1.5]
++	#define CLOUD_REV_DAY4_DENSITY 	1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0 8.0 10.0]
++	#define CLOUD_REV_DAY4_WEATHER_LOW 	0.30 // [0.20 0.25 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75 0.80]
++	#define CLOUD_REV_DAY4_WEATHER_HIGH 	0.95 // [0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00]
++	#define CLOUD_REV_DAY4_SCALE 	1.0 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0]
++	#define CLOUD_REV_DAY4_WEATHER_STRENGTH 	1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
++	#define CLOUD_REV_DAY4_LOCAL_NOISE 	0.2 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
++	#define CLOUD_REV_DAY4_BASE_NOISE_SCALE 	0.001 // [0.0001 0.00015 0.0002 0.00025 0.0003 0.00035 0.0004 0.00045 0.0005 0.00055 0.0006 0.00065 0.0007 0.00075 0.0008 0.00085 0.0009 0.00095 0.001 0.0011 0.0012 0.0014 0.0015 0.0016 0.0017 0.0018 0.0019 0.002]
++	#define CLOUD_REV_DAY4_DETAIL_NOISE_SCALE 	0.007 // [0.001 0.002 0.003 0.004 0.005 0.006 0.007 0.008 0.009 0.01 0.011 0.012 0.013 0.014 0.015 0.016 0.017 0.018 0.019 0.02]
++	#define CLOUD_REV_DAY4_COVERAGE_NOISE_OFFSET 	0.68 // [0.0 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.3 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.4 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.5 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.6 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.8 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99]
++	#define CLOUD_REV_DAY4_DETAILED_NOISE_STRENGTH 	1.0 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 3.5 4.0]
++	#define CLOUD_REV_DAY4_DUAL_SOFTENING 	2.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.2 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0]
++	#define CLOUD_REV_DAY4_DUAL_BODY_G 	0.15 // [0.0 0.05 0.1 0.15 0.2 0.25 0.3 0.35 0.4]
++	#define CLOUD_REV_DAY4_DUAL_BODY_STRENGTH 	2.0 // [0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0]
++
++	#define CLOUD_REV_DAY5_ALTITUDE 	1000.0 // [300.0 400.0 500.0 600.0 700.0 800.0 900.0 1000.0 1100.0 1200.0 1300.0 1400.0 1500.0 1600.0 1700.0 1800.0 1900.0 2000.0 2100.0 2200.0 2300.0 2400.0 2500.0 2600.0 2700.0 2800.0 2900.0 3000.0 3100.0 3200.0 3300.0 3400.0 3500.0 3600.0 3700.0 3800.0 3900.0 4000.0 4100.0 4200.0 4300.0 4400.0 4500.0 4600.0 4700.0 4800.0 4900.0 5000.0 5100.0 5200.0 5300.0 5400.0 5500.0 5600.0 5700.0 5800.0 5900.0 6000.0]
++	#define CLOUD_REV_DAY5_HEIGHT 	600.0 // [100.0 150.0 200.0 250.0 300.0 350.0 400.0 450.0 500.0 550.0 600.0 650.0 700.0 750.0 800.0 850.0 900.0 950.0 1000.0 1100.0 1200.0 1300.0 1400.0 1500.0 1600.0 1700.0 1800.0 1900.0 2000.0 2250.0 2500.0 2750.0 3000.0 4000.0 5000.0]
++	#define CLOUD_REV_DAY5_COVERY 	0.9 // [0.1 0.12 0.14 0.16 0.18 0.2 0.22 0.24 0.26 0.28 0.3 0.32 0.34 0.36 0.38 0.4 0.42 0.44 0.46 0.48 0.5 0.52 0.54 0.56 0.58 0.6 0.62 0.64 0.66 0.68 0.7 0.72 0.74 0.76 0.78 0.8 0.82 0.84 0.86 0.88 0.9 0.92 0.94 0.96 0.98 1.0 1.1 1.2 1.3 1.4 1.5]
++	#define CLOUD_REV_DAY5_DENSITY 	1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0 8.0 10.0]
++	#define CLOUD_REV_DAY5_WEATHER_LOW 	0.30 // [0.20 0.25 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75 0.80]
++	#define CLOUD_REV_DAY5_WEATHER_HIGH 	0.95 // [0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00]
++	#define CLOUD_REV_DAY5_SCALE 	1.0 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0]
++	#define CLOUD_REV_DAY5_WEATHER_STRENGTH 	1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
++	#define CLOUD_REV_DAY5_LOCAL_NOISE 	0.2 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
++	#define CLOUD_REV_DAY5_BASE_NOISE_SCALE 	0.001 // [0.0001 0.00015 0.0002 0.00025 0.0003 0.00035 0.0004 0.00045 0.0005 0.00055 0.0006 0.00065 0.0007 0.00075 0.0008 0.00085 0.0009 0.00095 0.001 0.0011 0.0012 0.0014 0.0015 0.0016 0.0017 0.0018 0.0019 0.002]
++	#define CLOUD_REV_DAY5_DETAIL_NOISE_SCALE 	0.007 // [0.001 0.002 0.003 0.004 0.005 0.006 0.007 0.008 0.009 0.01 0.011 0.012 0.013 0.014 0.015 0.016 0.017 0.018 0.019 0.02]
++	#define CLOUD_REV_DAY5_COVERAGE_NOISE_OFFSET 	0.68 // [0.0 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.3 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.4 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.5 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.6 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.8 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99]
++	#define CLOUD_REV_DAY5_DETAILED_NOISE_STRENGTH 	1.0 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 3.5 4.0]
++	#define CLOUD_REV_DAY5_DUAL_SOFTENING 	2.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.2 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0]
++	#define CLOUD_REV_DAY5_DUAL_BODY_G 	0.15 // [0.0 0.05 0.1 0.15 0.2 0.25 0.3 0.35 0.4]
++	#define CLOUD_REV_DAY5_DUAL_BODY_STRENGTH 	2.0 // [0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0]
++
++	#define CLOUD_REV_DAY6_ALTITUDE 	1000.0 // [300.0 400.0 500.0 600.0 700.0 800.0 900.0 1000.0 1100.0 1200.0 1300.0 1400.0 1500.0 1600.0 1700.0 1800.0 1900.0 2000.0 2100.0 2200.0 2300.0 2400.0 2500.0 2600.0 2700.0 2800.0 2900.0 3000.0 3100.0 3200.0 3300.0 3400.0 3500.0 3600.0 3700.0 3800.0 3900.0 4000.0 4100.0 4200.0 4300.0 4400.0 4500.0 4600.0 4700.0 4800.0 4900.0 5000.0 5100.0 5200.0 5300.0 5400.0 5500.0 5600.0 5700.0 5800.0 5900.0 6000.0]
++	#define CLOUD_REV_DAY6_HEIGHT 	600.0 // [100.0 150.0 200.0 250.0 300.0 350.0 400.0 450.0 500.0 550.0 600.0 650.0 700.0 750.0 800.0 850.0 900.0 950.0 1000.0 1100.0 1200.0 1300.0 1400.0 1500.0 1600.0 1700.0 1800.0 1900.0 2000.0 2250.0 2500.0 2750.0 3000.0 4000.0 5000.0]
++	#define CLOUD_REV_DAY6_COVERY 	0.9 // [0.1 0.12 0.14 0.16 0.18 0.2 0.22 0.24 0.26 0.28 0.3 0.32 0.34 0.36 0.38 0.4 0.42 0.44 0.46 0.48 0.5 0.52 0.54 0.56 0.58 0.6 0.62 0.64 0.66 0.68 0.7 0.72 0.74 0.76 0.78 0.8 0.82 0.84 0.86 0.88 0.9 0.92 0.94 0.96 0.98 1.0 1.1 1.2 1.3 1.4 1.5]
++	#define CLOUD_REV_DAY6_DENSITY 	1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0 8.0 10.0]
++	#define CLOUD_REV_DAY6_WEATHER_LOW 	0.30 // [0.20 0.25 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75 0.80]
++	#define CLOUD_REV_DAY6_WEATHER_HIGH 	0.95 // [0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00]
++	#define CLOUD_REV_DAY6_SCALE 	1.0 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0]
++	#define CLOUD_REV_DAY6_WEATHER_STRENGTH 	1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
++	#define CLOUD_REV_DAY6_LOCAL_NOISE 	0.2 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
++	#define CLOUD_REV_DAY6_BASE_NOISE_SCALE 	0.001 // [0.0001 0.00015 0.0002 0.00025 0.0003 0.00035 0.0004 0.00045 0.0005 0.00055 0.0006 0.00065 0.0007 0.00075 0.0008 0.00085 0.0009 0.00095 0.001 0.0011 0.0012 0.0014 0.0015 0.0016 0.0017 0.0018 0.0019 0.002]
++	#define CLOUD_REV_DAY6_DETAIL_NOISE_SCALE 	0.007 // [0.001 0.002 0.003 0.004 0.005 0.006 0.007 0.008 0.009 0.01 0.011 0.012 0.013 0.014 0.015 0.016 0.017 0.018 0.019 0.02]
++	#define CLOUD_REV_DAY6_COVERAGE_NOISE_OFFSET 	0.68 // [0.0 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.3 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.4 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.5 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.6 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.8 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99]
++	#define CLOUD_REV_DAY6_DETAILED_NOISE_STRENGTH 	1.0 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 3.5 4.0]
++	#define CLOUD_REV_DAY6_DUAL_SOFTENING 	2.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.2 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0]
++	#define CLOUD_REV_DAY6_DUAL_BODY_G 	0.15 // [0.0 0.05 0.1 0.15 0.2 0.25 0.3 0.35 0.4]
++	#define CLOUD_REV_DAY6_DUAL_BODY_STRENGTH 	2.0 // [0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0]
++
++	#define CLOUD_REV_DAY7_ALTITUDE 	1000.0 // [300.0 400.0 500.0 600.0 700.0 800.0 900.0 1000.0 1100.0 1200.0 1300.0 1400.0 1500.0 1600.0 1700.0 1800.0 1900.0 2000.0 2100.0 2200.0 2300.0 2400.0 2500.0 2600.0 2700.0 2800.0 2900.0 3000.0 3100.0 3200.0 3300.0 3400.0 3500.0 3600.0 3700.0 3800.0 3900.0 4000.0 4100.0 4200.0 4300.0 4400.0 4500.0 4600.0 4700.0 4800.0 4900.0 5000.0 5100.0 5200.0 5300.0 5400.0 5500.0 5600.0 5700.0 5800.0 5900.0 6000.0]
++	#define CLOUD_REV_DAY7_HEIGHT 	600.0 // [100.0 150.0 200.0 250.0 300.0 350.0 400.0 450.0 500.0 550.0 600.0 650.0 700.0 750.0 800.0 850.0 900.0 950.0 1000.0 1100.0 1200.0 1300.0 1400.0 1500.0 1600.0 1700.0 1800.0 1900.0 2000.0 2250.0 2500.0 2750.0 3000.0 4000.0 5000.0]
++	#define CLOUD_REV_DAY7_COVERY 	0.9 // [0.1 0.12 0.14 0.16 0.18 0.2 0.22 0.24 0.26 0.28 0.3 0.32 0.34 0.36 0.38 0.4 0.42 0.44 0.46 0.48 0.5 0.52 0.54 0.56 0.58 0.6 0.62 0.64 0.66 0.68 0.7 0.72 0.74 0.76 0.78 0.8 0.82 0.84 0.86 0.88 0.9 0.92 0.94 0.96 0.98 1.0 1.1 1.2 1.3 1.4 1.5]
++	#define CLOUD_REV_DAY7_DENSITY 	1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0 8.0 10.0]
++	#define CLOUD_REV_DAY7_WEATHER_LOW 	0.30 // [0.20 0.25 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75 0.80]
++	#define CLOUD_REV_DAY7_WEATHER_HIGH 	0.95 // [0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00]
++	#define CLOUD_REV_DAY7_SCALE 	1.0 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0]
++	#define CLOUD_REV_DAY7_WEATHER_STRENGTH 	1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
++	#define CLOUD_REV_DAY7_LOCAL_NOISE 	0.2 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
++	#define CLOUD_REV_DAY7_BASE_NOISE_SCALE 	0.001 // [0.0001 0.00015 0.0002 0.00025 0.0003 0.00035 0.0004 0.00045 0.0005 0.00055 0.0006 0.00065 0.0007 0.00075 0.0008 0.00085 0.0009 0.00095 0.001 0.0011 0.0012 0.0014 0.0015 0.0016 0.0017 0.0018 0.0019 0.002]
++	#define CLOUD_REV_DAY7_DETAIL_NOISE_SCALE 	0.007 // [0.001 0.002 0.003 0.004 0.005 0.006 0.007 0.008 0.009 0.01 0.011 0.012 0.013 0.014 0.015 0.016 0.017 0.018 0.019 0.02]
++	#define CLOUD_REV_DAY7_COVERAGE_NOISE_OFFSET 	0.68 // [0.0 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.3 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.4 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.5 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.6 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.8 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99]
++	#define CLOUD_REV_DAY7_DETAILED_NOISE_STRENGTH 	1.0 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 3.5 4.0]
++	#define CLOUD_REV_DAY7_DUAL_SOFTENING 	2.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.2 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0]
++	#define CLOUD_REV_DAY7_DUAL_BODY_G 	0.15 // [0.0 0.05 0.1 0.15 0.2 0.25 0.3 0.35 0.4]
++	#define CLOUD_REV_DAY7_DUAL_BODY_STRENGTH 	2.0 // [0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0]
++
++	#define CLOUD_REV_DAY8_ALTITUDE 	1000.0 // [300.0 400.0 500.0 600.0 700.0 800.0 900.0 1000.0 1100.0 1200.0 1300.0 1400.0 1500.0 1600.0 1700.0 1800.0 1900.0 2000.0 2100.0 2200.0 2300.0 2400.0 2500.0 2600.0 2700.0 2800.0 2900.0 3000.0 3100.0 3200.0 3300.0 3400.0 3500.0 3600.0 3700.0 3800.0 3900.0 4000.0 4100.0 4200.0 4300.0 4400.0 4500.0 4600.0 4700.0 4800.0 4900.0 5000.0 5100.0 5200.0 5300.0 5400.0 5500.0 5600.0 5700.0 5800.0 5900.0 6000.0]
++	#define CLOUD_REV_DAY8_HEIGHT 	600.0 // [100.0 150.0 200.0 250.0 300.0 350.0 400.0 450.0 500.0 550.0 600.0 650.0 700.0 750.0 800.0 850.0 900.0 950.0 1000.0 1100.0 1200.0 1300.0 1400.0 1500.0 1600.0 1700.0 1800.0 1900.0 2000.0 2250.0 2500.0 2750.0 3000.0 4000.0 5000.0]
++	#define CLOUD_REV_DAY8_COVERY 	0.9 // [0.1 0.12 0.14 0.16 0.18 0.2 0.22 0.24 0.26 0.28 0.3 0.32 0.34 0.36 0.38 0.4 0.42 0.44 0.46 0.48 0.5 0.52 0.54 0.56 0.58 0.6 0.62 0.64 0.66 0.68 0.7 0.72 0.74 0.76 0.78 0.8 0.82 0.84 0.86 0.88 0.9 0.92 0.94 0.96 0.98 1.0 1.1 1.2 1.3 1.4 1.5]
++	#define CLOUD_REV_DAY8_DENSITY 	1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0 8.0 10.0]
++	#define CLOUD_REV_DAY8_WEATHER_LOW 	0.30 // [0.20 0.25 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75 0.80]
++	#define CLOUD_REV_DAY8_WEATHER_HIGH 	0.95 // [0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00]
++	#define CLOUD_REV_DAY8_SCALE 	1.0 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0]
++	#define CLOUD_REV_DAY8_WEATHER_STRENGTH 	1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
++	#define CLOUD_REV_DAY8_LOCAL_NOISE 	0.2 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
++	#define CLOUD_REV_DAY8_BASE_NOISE_SCALE 	0.001 // [0.0001 0.00015 0.0002 0.00025 0.0003 0.00035 0.0004 0.00045 0.0005 0.00055 0.0006 0.00065 0.0007 0.00075 0.0008 0.00085 0.0009 0.00095 0.001 0.0011 0.0012 0.0014 0.0015 0.0016 0.0017 0.0018 0.0019 0.002]
++	#define CLOUD_REV_DAY8_DETAIL_NOISE_SCALE 	0.007 // [0.001 0.002 0.003 0.004 0.005 0.006 0.007 0.008 0.009 0.01 0.011 0.012 0.013 0.014 0.015 0.016 0.017 0.018 0.019 0.02]
++	#define CLOUD_REV_DAY8_COVERAGE_NOISE_OFFSET 	0.68 // [0.0 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.3 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.4 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.5 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.6 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.8 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99]
++	#define CLOUD_REV_DAY8_DETAILED_NOISE_STRENGTH 	1.0 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 3.5 4.0]
++	#define CLOUD_REV_DAY8_DUAL_SOFTENING 	2.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.2 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0]
++	#define CLOUD_REV_DAY8_DUAL_BODY_G 	0.15 // [0.0 0.05 0.1 0.15 0.2 0.25 0.3 0.35 0.4]
++	#define CLOUD_REV_DAY8_DUAL_BODY_STRENGTH 	2.0 // [0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0]
++
++	#define CLOUD_REV_DAY9_ALTITUDE 	1000.0 // [300.0 400.0 500.0 600.0 700.0 800.0 900.0 1000.0 1100.0 1200.0 1300.0 1400.0 1500.0 1600.0 1700.0 1800.0 1900.0 2000.0 2100.0 2200.0 2300.0 2400.0 2500.0 2600.0 2700.0 2800.0 2900.0 3000.0 3100.0 3200.0 3300.0 3400.0 3500.0 3600.0 3700.0 3800.0 3900.0 4000.0 4100.0 4200.0 4300.0 4400.0 4500.0 4600.0 4700.0 4800.0 4900.0 5000.0 5100.0 5200.0 5300.0 5400.0 5500.0 5600.0 5700.0 5800.0 5900.0 6000.0]
++	#define CLOUD_REV_DAY9_HEIGHT 	600.0 // [100.0 150.0 200.0 250.0 300.0 350.0 400.0 450.0 500.0 550.0 600.0 650.0 700.0 750.0 800.0 850.0 900.0 950.0 1000.0 1100.0 1200.0 1300.0 1400.0 1500.0 1600.0 1700.0 1800.0 1900.0 2000.0 2250.0 2500.0 2750.0 3000.0 4000.0 5000.0]
++	#define CLOUD_REV_DAY9_COVERY 	0.9 // [0.1 0.12 0.14 0.16 0.18 0.2 0.22 0.24 0.26 0.28 0.3 0.32 0.34 0.36 0.38 0.4 0.42 0.44 0.46 0.48 0.5 0.52 0.54 0.56 0.58 0.6 0.62 0.64 0.66 0.68 0.7 0.72 0.74 0.76 0.78 0.8 0.82 0.84 0.86 0.88 0.9 0.92 0.94 0.96 0.98 1.0 1.1 1.2 1.3 1.4 1.5]
++	#define CLOUD_REV_DAY9_DENSITY 	1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0 8.0 10.0]
++	#define CLOUD_REV_DAY9_WEATHER_LOW 	0.30 // [0.20 0.25 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75 0.80]
++	#define CLOUD_REV_DAY9_WEATHER_HIGH 	0.95 // [0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00]
++	#define CLOUD_REV_DAY9_SCALE 	1.0 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 5.0]
++	#define CLOUD_REV_DAY9_WEATHER_STRENGTH 	1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
++	#define CLOUD_REV_DAY9_LOCAL_NOISE 	0.2 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
++	#define CLOUD_REV_DAY9_BASE_NOISE_SCALE 	0.001 // [0.0001 0.00015 0.0002 0.00025 0.0003 0.00035 0.0004 0.00045 0.0005 0.00055 0.0006 0.00065 0.0007 0.00075 0.0008 0.00085 0.0009 0.00095 0.001 0.0011 0.0012 0.0014 0.0015 0.0016 0.0017 0.0018 0.0019 0.002]
++	#define CLOUD_REV_DAY9_DETAIL_NOISE_SCALE 	0.007 // [0.001 0.002 0.003 0.004 0.005 0.006 0.007 0.008 0.009 0.01 0.011 0.012 0.013 0.014 0.015 0.016 0.017 0.018 0.019 0.02]
++	#define CLOUD_REV_DAY9_COVERAGE_NOISE_OFFSET 	0.68 // [0.0 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.3 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.4 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.5 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.6 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.8 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99]
++	#define CLOUD_REV_DAY9_DETAILED_NOISE_STRENGTH 	1.0 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.5 3.0 3.5 4.0]
++	#define CLOUD_REV_DAY9_DUAL_SOFTENING 	2.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.2 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0]
++	#define CLOUD_REV_DAY9_DUAL_BODY_G 	0.15 // [0.0 0.05 0.1 0.15 0.2 0.25 0.3 0.35 0.4]
++	#define CLOUD_REV_DAY9_DUAL_BODY_STRENGTH 	2.0 // [0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0]
  
  
  	#define CLOUD_FADE
-@@ -567,6 +589,19 @@ const float monocleFix = 0.0 / 0.0;
+@@ -567,6 +762,19 @@ const float monocleFix = 0.0 / 0.0;
  	#define CLOUD_SHADOW_FADE
  	#define CLOUD_SHADOW_RANGE 		4096.0 	// [2048.0 3072.0 4096.0 6144.0 8192.0 12288.0 16384.0]
  	#define CLOUD_SHADOWTEX_SIZE 	256.0 	// [128.0 192.0 256.0 384.0 512.0 768.0 1024.0]
@@ -4200,7 +4918,7 @@ index 621004b..d2df6b1 100644
  
  //Volumetric Fog------------------------
  	#define VFOG
-@@ -589,7 +624,8 @@ const float monocleFix = 0.0 / 0.0;
+@@ -589,7 +797,8 @@ const float monocleFix = 0.0 / 0.0;
  
    //#define VFOG_IGNORE_WORLDTIME
  	#define VFOG_STAINED
@@ -4210,7 +4928,7 @@ index 621004b..d2df6b1 100644
  	#define VFOG_RAIN_DENSITY_MUL 		2.0 // [1.0 1.5 2.0 3.0 5.0 7.0 10.0]
  
  	#define VFOG_SUNLIGHT_DENSITY 		1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.2 1.4 1.6 1.8 2.0 3.0 5.0 7.0 10.0 15.0 20.0 30.0 50.0 70.0 100.0]
-@@ -644,6 +680,7 @@ const float monocleFix = 0.0 / 0.0;
+@@ -644,6 +853,7 @@ const float monocleFix = 0.0 / 0.0;
  	#define DOF_BLUR 					0.01 // [0.001 0.0015 0.002 0.003 0.005 0.007 0.01 0.015 0.02 0.03 0.05 0.07 0.1 0.15 0.2 0.3 0.5 0.7 1.0 1.5 2.0 3.0 5.0]
  	#define DOF_MAX_COC 				0.02 // [0.001 0.0015 0.002 0.003 0.005 0.007 0.01 0.015 0.02 0.03 0.05 0.07 0.1 0.15 0.2 0.3 0.5]
  	#define DOF_BLUR_REFERENCE 			0 // [0 1]
@@ -4218,7 +4936,18 @@ index 621004b..d2df6b1 100644
  
  	#define CAMERA_FOCUS_MODE 			0 // [0 1]
  	#define CAMERA_FOCAL_POINT 			10.0 // [0.2 0.3 0.4 0.6 0.8 1.0 1.25 1.5 1.75 2.0 2.5 3.0 3.5 4.0 5.0 6.0 8.0 10.0 12.5 15.0 17.5 20.0 25.0 30.0 40.0 50.0 60.0 80.0 100.0 150.0 200.0 250.0 300.0 400.0 500.0 600.0 800.0 1000.0]
-@@ -690,19 +727,77 @@ const float monocleFix = 0.0 / 0.0;
+@@ -684,25 +894,88 @@ const float monocleFix = 0.0 / 0.0;
+ 	#define VIGNETTE_ROUNDNESS  0.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
+   //#define SNEAKING_VIGNETTE
+ 
++//Film Grain----------------------------
++  //#define FILM_GRAIN
++	#define FILM_GRAIN_INTENSITY 0.1 // [0.0 0.05 0.1 0.15 0.2 0.25 0.3 0.4 0.5 0.75 1.0]
++	#define FILM_GRAIN_SIZE 1.0 // [0.5 0.75 1.0 1.25 1.5 1.75 2.0 2.5 3.0 4.0 5.0]
++
+ //Bloom---------------------------------
+ 	#define BLOOM
+ 	#define BLOOM_AMOUNT 			0.12 // [0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.25 0.3 0.35 0.4 0.45 0.5 0.6 0.7 0.8 0.9 1.0]
  	#define BLOOM_CLAMP_STRENGTH 	1 // [0 1 2]
  	#define NETHER_END_BLOOM_BOOST 	1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0]
  
@@ -4298,7 +5027,7 @@ index 621004b..d2df6b1 100644
    //#define ADVANCED_COLOR
  
  	#define HIGHLIGHT_CURVE 	0.0 // [-1.0 -0.99 -0.98 -0.97 -0.96 -0.95 -0.94 -0.93 -0.92 -0.91 -0.9 -0.89 -0.88 -0.87 -0.86 -0.85 -0.84 -0.83 -0.82 -0.81 -0.8 -0.79 -0.78 -0.77 -0.76 -0.75 -0.74 -0.73 -0.72 -0.71 -0.7 -0.69 -0.68 -0.67 -0.66 -0.65 -0.64 -0.63 -0.62 -0.61 -0.6 -0.59 -0.58 -0.57 -0.56 -0.55 -0.54 -0.53 -0.52 -0.51 -0.5 -0.49 -0.48 -0.47 -0.46 -0.45 -0.44 -0.43 -0.42 -0.41 -0.4 -0.39 -0.38 -0.37 -0.36 -0.35 -0.34 -0.33 -0.32 -0.31 -0.3 -0.29 -0.28 -0.27 -0.26 -0.25 -0.24 -0.23 -0.22 -0.21 -0.2 -0.19 -0.18 -0.17 -0.16 -0.15 -0.14 -0.13 -0.12 -0.11 -0.1 -0.09 -0.08 -0.07 -0.06 -0.05 -0.04 -0.03 -0.02 -0.01 0.0 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.3 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.4 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.5 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.6 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.8 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99 1.0]
-@@ -765,6 +860,13 @@ const float monocleFix = 0.0 / 0.0;
+@@ -765,6 +1038,13 @@ const float monocleFix = 0.0 / 0.0;
  	#define PURKINJE_EFFECT_THRESHOLD 	0.00003 // [0.00001 0.000015 0.00002 0.00003 0.00005 0.00007 0.0001 0.00015 0.0002 0.0003 0.0005 0.0007 0.001]
  	#define PURKINJE_EFFECT_STRENGTH 	0.7 	// [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
  
@@ -4312,7 +5041,7 @@ index 621004b..d2df6b1 100644
  
  
  
-@@ -814,4 +916,4 @@ const float monocleFix = 0.0 / 0.0;
+@@ -814,4 +1094,4 @@ const float monocleFix = 0.0 / 0.0;
    //#define DEBUG_IRC
    //#define DISABLE_REFLECTION_TEMPORAL_MOTIONWEIGHT
  
@@ -4424,7 +5153,7 @@ similarity index 100%
 rename from shaders/composite80.vsh
 rename to shaders/composite81.vsh
 diff --git a/shaders/lang/en_us.lang b/shaders/lang/en_us.lang
-index 798e1d8..1026212 100644
+index 798e1d8..5835f2e 100644
 --- a/shaders/lang/en_us.lang
 +++ b/shaders/lang/en_us.lang
 @@ -366,6 +366,30 @@ option.RAIN_SPLASH_EFFECT=Rain Splash
@@ -4539,15 +5268,27 @@ index 798e1d8..1026212 100644
  option.AGX_EV=AgX Dynamic Range
  suffix.AGX_EV=EV
  option.AGX_HDR_EV=AgX HDR Dynamic Range
-@@ -753,6 +821,127 @@ option.DISABLE_PLAYER_SCREEN_SPACE_SHADOWS=Disable Player Screen Space Shadow
+@@ -753,6 +821,159 @@ option.DISABLE_PLAYER_SCREEN_SPACE_SHADOWS=Disable Player Screen Space Shadow
  
  
  screen.SHORTCUT=Shortcut
 +screen.SOCZYSTAWOLOWINA_EDITS=SoczystaWolowina Edits
 +screen.CLOUDS_CAST_SHADOWS=Clouds Cast Shadows
 +screen.REVELATION_WEATHER_MAP=Weather Map
++screen.REVELATION_DAY_PRESETS=Cloud Weather Presets
++screen.REVELATION_DAY_0=Day 1
++screen.REVELATION_DAY_1=Day 2
++screen.REVELATION_DAY_2=Day 3
++screen.REVELATION_DAY_3=Day 4
++screen.REVELATION_DAY_4=Day 5
++screen.REVELATION_DAY_5=Day 6
++screen.REVELATION_DAY_6=Day 7
++screen.REVELATION_DAY_7=Day 8
++screen.REVELATION_DAY_8=Day 9
++screen.REVELATION_DAY_9=Day 10
 +screen.CLOUD_LIGHTING_SW=Cloud Lighting
 +screen.PIXELATED_CLOUDS_SW=Pixelated Clouds
++screen.FILM_GRAIN_SW=Film Grain
 +screen.LUT_SETTING=Custom LUT
 +screen.TIME_GRADE_SETTING=Time Grade
 +screen.CONVOLUTION_BLOOM_HUJ=Convolution Bloom by Huj
@@ -4588,6 +5329,26 @@ index 798e1d8..1026212 100644
 +option.CLOUD_DUAL_LOBE_BODY_G.comment=Sets the phase anisotropy of the secondary body lobe. Lower values feel broader and more neutral.
 +option.CLOUD_DUAL_LOBE_BODY_STRENGTH=Body Lobe Strength
 +option.CLOUD_DUAL_LOBE_BODY_STRENGTH.comment=Scales the brightness contribution of the secondary soft body lobe.
++option.CLOUD_REVELATION_DAY_MODE=Preset Control
++option.CLOUD_REVELATION_DAY_MODE.comment=Controls whether Revelation cloud weather presets are disabled, pinned manually, cycled by world day, or randomized by day.
++value.CLOUD_REVELATION_DAY_MODE.0=Off
++value.CLOUD_REVELATION_DAY_MODE.1=Manual
++value.CLOUD_REVELATION_DAY_MODE.2=Cycle
++value.CLOUD_REVELATION_DAY_MODE.3=Random
++option.CLOUD_REVELATION_MANUAL_DAY=Pinned Day
++option.CLOUD_REVELATION_MANUAL_DAY.comment=Selects which weather preset to use when Preset Control is set to Manual.
++value.CLOUD_REVELATION_MANUAL_DAY.1=Day 1
++value.CLOUD_REVELATION_MANUAL_DAY.2=Day 2
++value.CLOUD_REVELATION_MANUAL_DAY.3=Day 3
++value.CLOUD_REVELATION_MANUAL_DAY.4=Day 4
++value.CLOUD_REVELATION_MANUAL_DAY.5=Day 5
++value.CLOUD_REVELATION_MANUAL_DAY.6=Day 6
++value.CLOUD_REVELATION_MANUAL_DAY.7=Day 7
++value.CLOUD_REVELATION_MANUAL_DAY.8=Day 8
++value.CLOUD_REVELATION_MANUAL_DAY.9=Day 9
++value.CLOUD_REVELATION_MANUAL_DAY.10=Day 10
++option.CLOUD_REVELATION_DAY_TRANSITION_SPEED=Preset Blend Speed
++option.CLOUD_REVELATION_DAY_TRANSITION_SPEED.comment=Controls how quickly the shader blends from one cloud weather preset to the next.
 +
 +option.AURORA=§bAuroras
 +option.AURORA.comment=Enables the donor aurora sky effect in the overworld night sky.
@@ -4667,6 +5428,178 @@ index 798e1d8..1026212 100644
  
  option.CAVE_MODE=Cave Mode
  
+@@ -780,3 +1001,171 @@ screen.ANIMATION=Animation Setting
+ 
+ 
+ screen.DEBUG=§7Debug
++option.FILM_GRAIN=Film Grain
++option.FILM_GRAIN.comment=Adds donor film grain before vignette.
++option.FILM_GRAIN_INTENSITY=Film Grain Intensity
++option.FILM_GRAIN_INTENSITY.comment=Controls how visible the film grain is.
++option.FILM_GRAIN_SIZE=Film Grain Size
++option.FILM_GRAIN_SIZE.comment=Changes the grain scale from fine to coarse.
++option.DEBUG_COUNTER=Crosshair Peak Nits
++option.DEBUG_COUNTER.comment=Shows the estimated HDR peak brightness in nits for the pixel under the Minecraft crosshair.
++option.CLOUD_REV_DAY0_ALTITUDE=Altitude
++option.CLOUD_REV_DAY0_HEIGHT=Cloud Height
++option.CLOUD_REV_DAY0_COVERY=Coverage
++option.CLOUD_REV_DAY0_DENSITY=Density
++option.CLOUD_REV_DAY0_WEATHER_LOW=Weather Low
++option.CLOUD_REV_DAY0_WEATHER_HIGH=Weather High
++option.CLOUD_REV_DAY0_SCALE=Scale
++option.CLOUD_REV_DAY0_WEATHER_STRENGTH=Map Strength
++option.CLOUD_REV_DAY0_LOCAL_NOISE=Local Breakup
++option.CLOUD_REV_DAY0_BASE_NOISE_SCALE=Base Noise Scale
++option.CLOUD_REV_DAY0_DETAIL_NOISE_SCALE=Detail Noise Scale
++option.CLOUD_REV_DAY0_COVERAGE_NOISE_OFFSET=Coverage Noise Offset
++option.CLOUD_REV_DAY0_DETAILED_NOISE_STRENGTH=Detailed Noise Strength
++option.CLOUD_REV_DAY0_DUAL_SOFTENING=Dual-Lobe Softening
++option.CLOUD_REV_DAY0_DUAL_BODY_G=Dual-Body Anisotropy
++option.CLOUD_REV_DAY0_DUAL_BODY_STRENGTH=Dual-Body Strength
++option.CLOUD_REV_DAY1_ALTITUDE=Altitude
++option.CLOUD_REV_DAY1_HEIGHT=Cloud Height
++option.CLOUD_REV_DAY1_COVERY=Coverage
++option.CLOUD_REV_DAY1_DENSITY=Density
++option.CLOUD_REV_DAY1_WEATHER_LOW=Weather Low
++option.CLOUD_REV_DAY1_WEATHER_HIGH=Weather High
++option.CLOUD_REV_DAY1_SCALE=Scale
++option.CLOUD_REV_DAY1_WEATHER_STRENGTH=Map Strength
++option.CLOUD_REV_DAY1_LOCAL_NOISE=Local Breakup
++option.CLOUD_REV_DAY1_BASE_NOISE_SCALE=Base Noise Scale
++option.CLOUD_REV_DAY1_DETAIL_NOISE_SCALE=Detail Noise Scale
++option.CLOUD_REV_DAY1_COVERAGE_NOISE_OFFSET=Coverage Noise Offset
++option.CLOUD_REV_DAY1_DETAILED_NOISE_STRENGTH=Detailed Noise Strength
++option.CLOUD_REV_DAY1_DUAL_SOFTENING=Dual-Lobe Softening
++option.CLOUD_REV_DAY1_DUAL_BODY_G=Dual-Body Anisotropy
++option.CLOUD_REV_DAY1_DUAL_BODY_STRENGTH=Dual-Body Strength
++option.CLOUD_REV_DAY2_ALTITUDE=Altitude
++option.CLOUD_REV_DAY2_HEIGHT=Cloud Height
++option.CLOUD_REV_DAY2_COVERY=Coverage
++option.CLOUD_REV_DAY2_DENSITY=Density
++option.CLOUD_REV_DAY2_WEATHER_LOW=Weather Low
++option.CLOUD_REV_DAY2_WEATHER_HIGH=Weather High
++option.CLOUD_REV_DAY2_SCALE=Scale
++option.CLOUD_REV_DAY2_WEATHER_STRENGTH=Map Strength
++option.CLOUD_REV_DAY2_LOCAL_NOISE=Local Breakup
++option.CLOUD_REV_DAY2_BASE_NOISE_SCALE=Base Noise Scale
++option.CLOUD_REV_DAY2_DETAIL_NOISE_SCALE=Detail Noise Scale
++option.CLOUD_REV_DAY2_COVERAGE_NOISE_OFFSET=Coverage Noise Offset
++option.CLOUD_REV_DAY2_DETAILED_NOISE_STRENGTH=Detailed Noise Strength
++option.CLOUD_REV_DAY2_DUAL_SOFTENING=Dual-Lobe Softening
++option.CLOUD_REV_DAY2_DUAL_BODY_G=Dual-Body Anisotropy
++option.CLOUD_REV_DAY2_DUAL_BODY_STRENGTH=Dual-Body Strength
++option.CLOUD_REV_DAY3_ALTITUDE=Altitude
++option.CLOUD_REV_DAY3_HEIGHT=Cloud Height
++option.CLOUD_REV_DAY3_COVERY=Coverage
++option.CLOUD_REV_DAY3_DENSITY=Density
++option.CLOUD_REV_DAY3_WEATHER_LOW=Weather Low
++option.CLOUD_REV_DAY3_WEATHER_HIGH=Weather High
++option.CLOUD_REV_DAY3_SCALE=Scale
++option.CLOUD_REV_DAY3_WEATHER_STRENGTH=Map Strength
++option.CLOUD_REV_DAY3_LOCAL_NOISE=Local Breakup
++option.CLOUD_REV_DAY3_BASE_NOISE_SCALE=Base Noise Scale
++option.CLOUD_REV_DAY3_DETAIL_NOISE_SCALE=Detail Noise Scale
++option.CLOUD_REV_DAY3_COVERAGE_NOISE_OFFSET=Coverage Noise Offset
++option.CLOUD_REV_DAY3_DETAILED_NOISE_STRENGTH=Detailed Noise Strength
++option.CLOUD_REV_DAY3_DUAL_SOFTENING=Dual-Lobe Softening
++option.CLOUD_REV_DAY3_DUAL_BODY_G=Dual-Body Anisotropy
++option.CLOUD_REV_DAY3_DUAL_BODY_STRENGTH=Dual-Body Strength
++option.CLOUD_REV_DAY4_ALTITUDE=Altitude
++option.CLOUD_REV_DAY4_HEIGHT=Cloud Height
++option.CLOUD_REV_DAY4_COVERY=Coverage
++option.CLOUD_REV_DAY4_DENSITY=Density
++option.CLOUD_REV_DAY4_WEATHER_LOW=Weather Low
++option.CLOUD_REV_DAY4_WEATHER_HIGH=Weather High
++option.CLOUD_REV_DAY4_SCALE=Scale
++option.CLOUD_REV_DAY4_WEATHER_STRENGTH=Map Strength
++option.CLOUD_REV_DAY4_LOCAL_NOISE=Local Breakup
++option.CLOUD_REV_DAY4_BASE_NOISE_SCALE=Base Noise Scale
++option.CLOUD_REV_DAY4_DETAIL_NOISE_SCALE=Detail Noise Scale
++option.CLOUD_REV_DAY4_COVERAGE_NOISE_OFFSET=Coverage Noise Offset
++option.CLOUD_REV_DAY4_DETAILED_NOISE_STRENGTH=Detailed Noise Strength
++option.CLOUD_REV_DAY4_DUAL_SOFTENING=Dual-Lobe Softening
++option.CLOUD_REV_DAY4_DUAL_BODY_G=Dual-Body Anisotropy
++option.CLOUD_REV_DAY4_DUAL_BODY_STRENGTH=Dual-Body Strength
++option.CLOUD_REV_DAY5_ALTITUDE=Altitude
++option.CLOUD_REV_DAY5_HEIGHT=Cloud Height
++option.CLOUD_REV_DAY5_COVERY=Coverage
++option.CLOUD_REV_DAY5_DENSITY=Density
++option.CLOUD_REV_DAY5_WEATHER_LOW=Weather Low
++option.CLOUD_REV_DAY5_WEATHER_HIGH=Weather High
++option.CLOUD_REV_DAY5_SCALE=Scale
++option.CLOUD_REV_DAY5_WEATHER_STRENGTH=Map Strength
++option.CLOUD_REV_DAY5_LOCAL_NOISE=Local Breakup
++option.CLOUD_REV_DAY5_BASE_NOISE_SCALE=Base Noise Scale
++option.CLOUD_REV_DAY5_DETAIL_NOISE_SCALE=Detail Noise Scale
++option.CLOUD_REV_DAY5_COVERAGE_NOISE_OFFSET=Coverage Noise Offset
++option.CLOUD_REV_DAY5_DETAILED_NOISE_STRENGTH=Detailed Noise Strength
++option.CLOUD_REV_DAY5_DUAL_SOFTENING=Dual-Lobe Softening
++option.CLOUD_REV_DAY5_DUAL_BODY_G=Dual-Body Anisotropy
++option.CLOUD_REV_DAY5_DUAL_BODY_STRENGTH=Dual-Body Strength
++option.CLOUD_REV_DAY6_ALTITUDE=Altitude
++option.CLOUD_REV_DAY6_HEIGHT=Cloud Height
++option.CLOUD_REV_DAY6_COVERY=Coverage
++option.CLOUD_REV_DAY6_DENSITY=Density
++option.CLOUD_REV_DAY6_WEATHER_LOW=Weather Low
++option.CLOUD_REV_DAY6_WEATHER_HIGH=Weather High
++option.CLOUD_REV_DAY6_SCALE=Scale
++option.CLOUD_REV_DAY6_WEATHER_STRENGTH=Map Strength
++option.CLOUD_REV_DAY6_LOCAL_NOISE=Local Breakup
++option.CLOUD_REV_DAY6_BASE_NOISE_SCALE=Base Noise Scale
++option.CLOUD_REV_DAY6_DETAIL_NOISE_SCALE=Detail Noise Scale
++option.CLOUD_REV_DAY6_COVERAGE_NOISE_OFFSET=Coverage Noise Offset
++option.CLOUD_REV_DAY6_DETAILED_NOISE_STRENGTH=Detailed Noise Strength
++option.CLOUD_REV_DAY6_DUAL_SOFTENING=Dual-Lobe Softening
++option.CLOUD_REV_DAY6_DUAL_BODY_G=Dual-Body Anisotropy
++option.CLOUD_REV_DAY6_DUAL_BODY_STRENGTH=Dual-Body Strength
++option.CLOUD_REV_DAY7_ALTITUDE=Altitude
++option.CLOUD_REV_DAY7_HEIGHT=Cloud Height
++option.CLOUD_REV_DAY7_COVERY=Coverage
++option.CLOUD_REV_DAY7_DENSITY=Density
++option.CLOUD_REV_DAY7_WEATHER_LOW=Weather Low
++option.CLOUD_REV_DAY7_WEATHER_HIGH=Weather High
++option.CLOUD_REV_DAY7_SCALE=Scale
++option.CLOUD_REV_DAY7_WEATHER_STRENGTH=Map Strength
++option.CLOUD_REV_DAY7_LOCAL_NOISE=Local Breakup
++option.CLOUD_REV_DAY7_BASE_NOISE_SCALE=Base Noise Scale
++option.CLOUD_REV_DAY7_DETAIL_NOISE_SCALE=Detail Noise Scale
++option.CLOUD_REV_DAY7_COVERAGE_NOISE_OFFSET=Coverage Noise Offset
++option.CLOUD_REV_DAY7_DETAILED_NOISE_STRENGTH=Detailed Noise Strength
++option.CLOUD_REV_DAY7_DUAL_SOFTENING=Dual-Lobe Softening
++option.CLOUD_REV_DAY7_DUAL_BODY_G=Dual-Body Anisotropy
++option.CLOUD_REV_DAY7_DUAL_BODY_STRENGTH=Dual-Body Strength
++option.CLOUD_REV_DAY8_ALTITUDE=Altitude
++option.CLOUD_REV_DAY8_HEIGHT=Cloud Height
++option.CLOUD_REV_DAY8_COVERY=Coverage
++option.CLOUD_REV_DAY8_DENSITY=Density
++option.CLOUD_REV_DAY8_WEATHER_LOW=Weather Low
++option.CLOUD_REV_DAY8_WEATHER_HIGH=Weather High
++option.CLOUD_REV_DAY8_SCALE=Scale
++option.CLOUD_REV_DAY8_WEATHER_STRENGTH=Map Strength
++option.CLOUD_REV_DAY8_LOCAL_NOISE=Local Breakup
++option.CLOUD_REV_DAY8_BASE_NOISE_SCALE=Base Noise Scale
++option.CLOUD_REV_DAY8_DETAIL_NOISE_SCALE=Detail Noise Scale
++option.CLOUD_REV_DAY8_COVERAGE_NOISE_OFFSET=Coverage Noise Offset
++option.CLOUD_REV_DAY8_DETAILED_NOISE_STRENGTH=Detailed Noise Strength
++option.CLOUD_REV_DAY8_DUAL_SOFTENING=Dual-Lobe Softening
++option.CLOUD_REV_DAY8_DUAL_BODY_G=Dual-Body Anisotropy
++option.CLOUD_REV_DAY8_DUAL_BODY_STRENGTH=Dual-Body Strength
++option.CLOUD_REV_DAY9_ALTITUDE=Altitude
++option.CLOUD_REV_DAY9_HEIGHT=Cloud Height
++option.CLOUD_REV_DAY9_COVERY=Coverage
++option.CLOUD_REV_DAY9_DENSITY=Density
++option.CLOUD_REV_DAY9_WEATHER_LOW=Weather Low
++option.CLOUD_REV_DAY9_WEATHER_HIGH=Weather High
++option.CLOUD_REV_DAY9_SCALE=Scale
++option.CLOUD_REV_DAY9_WEATHER_STRENGTH=Map Strength
++option.CLOUD_REV_DAY9_LOCAL_NOISE=Local Breakup
++option.CLOUD_REV_DAY9_BASE_NOISE_SCALE=Base Noise Scale
++option.CLOUD_REV_DAY9_DETAIL_NOISE_SCALE=Detail Noise Scale
++option.CLOUD_REV_DAY9_COVERAGE_NOISE_OFFSET=Coverage Noise Offset
++option.CLOUD_REV_DAY9_DETAILED_NOISE_STRENGTH=Detailed Noise Strength
++option.CLOUD_REV_DAY9_DUAL_SOFTENING=Dual-Lobe Softening
++option.CLOUD_REV_DAY9_DUAL_BODY_G=Dual-Body Anisotropy
++option.CLOUD_REV_DAY9_DUAL_BODY_STRENGTH=Dual-Body Strength
 diff --git a/shaders/prepare.csh b/shaders/prepare.csh
 new file mode 100644
 index 0000000..be1fbe9
@@ -5177,7 +6110,7 @@ index 0000000..1dfa2c4
 +#include "/Lib/Programs/Setup/KernelFFT_CS.glsl"
 \ No newline at end of file
 diff --git a/shaders/shaders.properties b/shaders/shaders.properties
-index c726a67..c289a82 100644
+index c726a67..56888f3 100644
 --- a/shaders/shaders.properties
 +++ b/shaders/shaders.properties
 @@ -17,7 +17,7 @@ shadow.culling    =false
@@ -5367,13 +6300,14 @@ index c726a67..c289a82 100644
  	screen.COLOR.columns=2
  		screen.ADVANCED_COLOR.columns=3
  		screen.WAVEFORM.columns=1
-@@ -809,6 +927,14 @@ screen.MOD_SUPPORT.columns=1
+@@ -809,6 +927,15 @@ screen.MOD_SUPPORT.columns=1
  screen.SCREENSHOT.columns=1
  	screen.ANIMATION.columns=2
  screen.DEBUG.columns=2
 +screen.SOCZYSTAWOLOWINA_EDITS.columns=1
 +screen.CLOUDS_CAST_SHADOWS.columns=1
 +screen.CLOUD_LIGHTING_SW.columns=1
++screen.FILM_GRAIN_SW.columns=1
 +screen.CONVOLUTION_BLOOM_HUJ.columns=1
 +screen.WATER_RIPPLES_WAKES.columns=1
 +screen.LIGHTING_TWEAKS_SW.columns=1
@@ -5382,7 +6316,7 @@ index c726a67..c289a82 100644
  
  
  
-@@ -830,7 +956,7 @@ screen= iterationRP_INFO    iterationRP_VERSION \
+@@ -830,7 +957,7 @@ screen= iterationRP_INFO    iterationRP_VERSION \
  		[PT_SPECULAR]       [VOL] \
  		[PT_IRC]            [POSTPROCESSING] \
  		<empty>             <empty> \
@@ -5391,7 +6325,7 @@ index c726a67..c289a82 100644
  		[SCREENSHOT]        <empty> \
  		<empty>             <empty> \
  		<empty>             <empty> \
-@@ -970,16 +1096,18 @@ screen.SURFACE= [POM]         [PT_ATLAS] \
+@@ -970,16 +1097,18 @@ screen.SURFACE= [POM]         [PT_ATLAS] \
  					GENERAL_GRASS_FIX
  
  
@@ -5420,7 +6354,7 @@ index c726a67..c289a82 100644
  
  	
  	screen.RAIN=drynessHalflife             RAIN_SHADOW \
-@@ -1104,6 +1232,7 @@ screen.POSTPROCESSING = [DOF_SETTING]         FSR2_SCALE \
+@@ -1104,6 +1233,7 @@ screen.POSTPROCESSING = [DOF_SETTING]         FSR2_SCALE \
  						DISABLE_HAND_DOF      CAMERA_FOCAL_POINT \
  						<empty>               DOF_DEPTH_SMMOOTH_HALFLIFE \
  						DOF_BLUR              DOF_FOCUS_IGNORE_HAND_PARTICLE \
@@ -5428,7 +6362,7 @@ index c726a67..c289a82 100644
  						DOF_MAX_COC           <empty> \
  						DOF_BLUR_REFERENCE    DOF_CATSEYE \
  						<empty>               DOF_CATSEYE_STRENGTH \
-@@ -1121,10 +1250,23 @@ screen.POSTPROCESSING = [DOF_SETTING]         FSR2_SCALE \
+@@ -1121,10 +1251,23 @@ screen.POSTPROCESSING = [DOF_SETTING]         FSR2_SCALE \
  
  	screen.VIGNETTE_SETTING=VIGNETTE VIGNETTE_FALLOFF VIGNETTE_ROUNDNESS <empty> SNEAKING_VIGNETTE
  
@@ -5453,20 +6387,21 @@ index c726a67..c289a82 100644
  					AGX_EV AGX_HDR_EV \
  					ABNEY_EFFECT_CORRECTION AGX_HDR_MIDGREY \
  					<empty> <empty> \
-@@ -1155,6 +1297,57 @@ screen.POSTPROCESSING = [DOF_SETTING]         FSR2_SCALE \
+@@ -1155,6 +1298,157 @@ screen.POSTPROCESSING = [DOF_SETTING]         FSR2_SCALE \
  
  screen.SHORTCUT=CAVE_MODE <empty> MANUAL_EXPOSURE EV_VALUE <empty> SUNRISE_ROTATION sunPathRotation SHADOW_RENDER_DISTANCE SUNLIGHT_LEAK_FIX
  
 +screen.LUT_SETTING.columns=1
 +screen.TIME_GRADE_SETTING.columns=1
 +
-+screen.SOCZYSTAWOLOWINA_EDITS=[CLOUDS_CAST_SHADOWS] [REVELATION_WEATHER_MAP] [CLOUD_LIGHTING_SW] [PIXELATED_CLOUDS_SW] [AURORA_SW] [LUT_SETTING] [CONVOLUTION_BLOOM_HUJ] [WATER_RIPPLES_WAKES] [LIGHTING_TWEAKS_SW]
++screen.SOCZYSTAWOLOWINA_EDITS=[CLOUDS_CAST_SHADOWS] [REVELATION_WEATHER_MAP] [CLOUD_LIGHTING_SW] [PIXELATED_CLOUDS_SW] [AURORA_SW] [FILM_GRAIN_SW] [LUT_SETTING] [CONVOLUTION_BLOOM_HUJ] [WATER_RIPPLES_WAKES] [LIGHTING_TWEAKS_SW]
 +
 +	screen.CLOUDS_CAST_SHADOWS=CLOUD_SHADOW CLOUD_SHADOW_OPACITY
 +	screen.CLOUD_LIGHTING_SW = CLOUD_DUAL_LOBE_RENDERING \
-+							   CLOUD_DUAL_LOBE_SOFTENING \
-+							   CLOUD_DUAL_LOBE_BODY_G \
-+							   CLOUD_DUAL_LOBE_BODY_STRENGTH
++						   CLOUD_DUAL_LOBE_SOFTENING \
++						   CLOUD_DUAL_LOBE_BODY_G \
++						   CLOUD_DUAL_LOBE_BODY_STRENGTH
++	screen.FILM_GRAIN_SW = FILM_GRAIN FILM_GRAIN_INTENSITY FILM_GRAIN_SIZE
 +	screen.PIXELATED_CLOUDS_SW=PIXELATED_CLOUDS PIXELATED_CLOUD_OCCUPANCY
 +	screen.AURORA_SW = AURORA AURORA_BIOME_RESTRICTION AURORA_PROBABILITY AURORA_COLOR_PRESET AURORA_FORCE
 +	screen.CONVOLUTION_BLOOM_HUJ = CONV_BLOOM FFT_SIZE \
@@ -5496,7 +6431,106 @@ index c726a67..c289a82 100644
 +									CLOUD_REVELATION_LOCAL_NOISE \
 +									CLOUD_REVELATION_WEATHER_DRIFT \
 +									CLOUD_ANIMATION_TYPE \
-+									CLOUD_SPEED
++									CLOUD_SPEED \
++									[REVELATION_DAY_PRESETS]
++screen.REVELATION_DAY_PRESETS.columns=2
++	screen.REVELATION_DAY_PRESETS = CLOUD_REVELATION_DAY_MODE CLOUD_REVELATION_MANUAL_DAY \
++									CLOUD_REVELATION_DAY_TRANSITION_SPEED <empty> \
++									[REVELATION_DAY_0] [REVELATION_DAY_1] \
++									[REVELATION_DAY_2] [REVELATION_DAY_3] \
++									[REVELATION_DAY_4] [REVELATION_DAY_5] \
++									[REVELATION_DAY_6] [REVELATION_DAY_7] \
++									[REVELATION_DAY_8] [REVELATION_DAY_9]
++screen.REVELATION_DAY_0.columns=2
++	screen.REVELATION_DAY_0 = CLOUD_REV_DAY0_ALTITUDE CLOUD_REV_DAY0_HEIGHT \
++							  CLOUD_REV_DAY0_COVERY CLOUD_REV_DAY0_DENSITY \
++							  CLOUD_REV_DAY0_WEATHER_LOW CLOUD_REV_DAY0_WEATHER_HIGH \
++							  CLOUD_REV_DAY0_SCALE CLOUD_REV_DAY0_WEATHER_STRENGTH \
++							  CLOUD_REV_DAY0_LOCAL_NOISE CLOUD_REV_DAY0_BASE_NOISE_SCALE \
++							  CLOUD_REV_DAY0_DETAIL_NOISE_SCALE CLOUD_REV_DAY0_COVERAGE_NOISE_OFFSET \
++							  CLOUD_REV_DAY0_DETAILED_NOISE_STRENGTH CLOUD_REV_DAY0_DUAL_SOFTENING \
++							  CLOUD_REV_DAY0_DUAL_BODY_G CLOUD_REV_DAY0_DUAL_BODY_STRENGTH
++screen.REVELATION_DAY_1.columns=2
++	screen.REVELATION_DAY_1 = CLOUD_REV_DAY1_ALTITUDE CLOUD_REV_DAY1_HEIGHT \
++							  CLOUD_REV_DAY1_COVERY CLOUD_REV_DAY1_DENSITY \
++							  CLOUD_REV_DAY1_WEATHER_LOW CLOUD_REV_DAY1_WEATHER_HIGH \
++							  CLOUD_REV_DAY1_SCALE CLOUD_REV_DAY1_WEATHER_STRENGTH \
++							  CLOUD_REV_DAY1_LOCAL_NOISE CLOUD_REV_DAY1_BASE_NOISE_SCALE \
++							  CLOUD_REV_DAY1_DETAIL_NOISE_SCALE CLOUD_REV_DAY1_COVERAGE_NOISE_OFFSET \
++							  CLOUD_REV_DAY1_DETAILED_NOISE_STRENGTH CLOUD_REV_DAY1_DUAL_SOFTENING \
++							  CLOUD_REV_DAY1_DUAL_BODY_G CLOUD_REV_DAY1_DUAL_BODY_STRENGTH
++screen.REVELATION_DAY_2.columns=2
++	screen.REVELATION_DAY_2 = CLOUD_REV_DAY2_ALTITUDE CLOUD_REV_DAY2_HEIGHT \
++							  CLOUD_REV_DAY2_COVERY CLOUD_REV_DAY2_DENSITY \
++							  CLOUD_REV_DAY2_WEATHER_LOW CLOUD_REV_DAY2_WEATHER_HIGH \
++							  CLOUD_REV_DAY2_SCALE CLOUD_REV_DAY2_WEATHER_STRENGTH \
++							  CLOUD_REV_DAY2_LOCAL_NOISE CLOUD_REV_DAY2_BASE_NOISE_SCALE \
++							  CLOUD_REV_DAY2_DETAIL_NOISE_SCALE CLOUD_REV_DAY2_COVERAGE_NOISE_OFFSET \
++							  CLOUD_REV_DAY2_DETAILED_NOISE_STRENGTH CLOUD_REV_DAY2_DUAL_SOFTENING \
++							  CLOUD_REV_DAY2_DUAL_BODY_G CLOUD_REV_DAY2_DUAL_BODY_STRENGTH
++screen.REVELATION_DAY_3.columns=2
++	screen.REVELATION_DAY_3 = CLOUD_REV_DAY3_ALTITUDE CLOUD_REV_DAY3_HEIGHT \
++							  CLOUD_REV_DAY3_COVERY CLOUD_REV_DAY3_DENSITY \
++							  CLOUD_REV_DAY3_WEATHER_LOW CLOUD_REV_DAY3_WEATHER_HIGH \
++							  CLOUD_REV_DAY3_SCALE CLOUD_REV_DAY3_WEATHER_STRENGTH \
++							  CLOUD_REV_DAY3_LOCAL_NOISE CLOUD_REV_DAY3_BASE_NOISE_SCALE \
++							  CLOUD_REV_DAY3_DETAIL_NOISE_SCALE CLOUD_REV_DAY3_COVERAGE_NOISE_OFFSET \
++							  CLOUD_REV_DAY3_DETAILED_NOISE_STRENGTH CLOUD_REV_DAY3_DUAL_SOFTENING \
++							  CLOUD_REV_DAY3_DUAL_BODY_G CLOUD_REV_DAY3_DUAL_BODY_STRENGTH
++screen.REVELATION_DAY_4.columns=2
++	screen.REVELATION_DAY_4 = CLOUD_REV_DAY4_ALTITUDE CLOUD_REV_DAY4_HEIGHT \
++							  CLOUD_REV_DAY4_COVERY CLOUD_REV_DAY4_DENSITY \
++							  CLOUD_REV_DAY4_WEATHER_LOW CLOUD_REV_DAY4_WEATHER_HIGH \
++							  CLOUD_REV_DAY4_SCALE CLOUD_REV_DAY4_WEATHER_STRENGTH \
++							  CLOUD_REV_DAY4_LOCAL_NOISE CLOUD_REV_DAY4_BASE_NOISE_SCALE \
++							  CLOUD_REV_DAY4_DETAIL_NOISE_SCALE CLOUD_REV_DAY4_COVERAGE_NOISE_OFFSET \
++							  CLOUD_REV_DAY4_DETAILED_NOISE_STRENGTH CLOUD_REV_DAY4_DUAL_SOFTENING \
++							  CLOUD_REV_DAY4_DUAL_BODY_G CLOUD_REV_DAY4_DUAL_BODY_STRENGTH
++screen.REVELATION_DAY_5.columns=2
++	screen.REVELATION_DAY_5 = CLOUD_REV_DAY5_ALTITUDE CLOUD_REV_DAY5_HEIGHT \
++							  CLOUD_REV_DAY5_COVERY CLOUD_REV_DAY5_DENSITY \
++							  CLOUD_REV_DAY5_WEATHER_LOW CLOUD_REV_DAY5_WEATHER_HIGH \
++							  CLOUD_REV_DAY5_SCALE CLOUD_REV_DAY5_WEATHER_STRENGTH \
++							  CLOUD_REV_DAY5_LOCAL_NOISE CLOUD_REV_DAY5_BASE_NOISE_SCALE \
++							  CLOUD_REV_DAY5_DETAIL_NOISE_SCALE CLOUD_REV_DAY5_COVERAGE_NOISE_OFFSET \
++							  CLOUD_REV_DAY5_DETAILED_NOISE_STRENGTH CLOUD_REV_DAY5_DUAL_SOFTENING \
++							  CLOUD_REV_DAY5_DUAL_BODY_G CLOUD_REV_DAY5_DUAL_BODY_STRENGTH
++screen.REVELATION_DAY_6.columns=2
++	screen.REVELATION_DAY_6 = CLOUD_REV_DAY6_ALTITUDE CLOUD_REV_DAY6_HEIGHT \
++							  CLOUD_REV_DAY6_COVERY CLOUD_REV_DAY6_DENSITY \
++							  CLOUD_REV_DAY6_WEATHER_LOW CLOUD_REV_DAY6_WEATHER_HIGH \
++							  CLOUD_REV_DAY6_SCALE CLOUD_REV_DAY6_WEATHER_STRENGTH \
++							  CLOUD_REV_DAY6_LOCAL_NOISE CLOUD_REV_DAY6_BASE_NOISE_SCALE \
++							  CLOUD_REV_DAY6_DETAIL_NOISE_SCALE CLOUD_REV_DAY6_COVERAGE_NOISE_OFFSET \
++							  CLOUD_REV_DAY6_DETAILED_NOISE_STRENGTH CLOUD_REV_DAY6_DUAL_SOFTENING \
++							  CLOUD_REV_DAY6_DUAL_BODY_G CLOUD_REV_DAY6_DUAL_BODY_STRENGTH
++screen.REVELATION_DAY_7.columns=2
++	screen.REVELATION_DAY_7 = CLOUD_REV_DAY7_ALTITUDE CLOUD_REV_DAY7_HEIGHT \
++							  CLOUD_REV_DAY7_COVERY CLOUD_REV_DAY7_DENSITY \
++							  CLOUD_REV_DAY7_WEATHER_LOW CLOUD_REV_DAY7_WEATHER_HIGH \
++							  CLOUD_REV_DAY7_SCALE CLOUD_REV_DAY7_WEATHER_STRENGTH \
++							  CLOUD_REV_DAY7_LOCAL_NOISE CLOUD_REV_DAY7_BASE_NOISE_SCALE \
++							  CLOUD_REV_DAY7_DETAIL_NOISE_SCALE CLOUD_REV_DAY7_COVERAGE_NOISE_OFFSET \
++							  CLOUD_REV_DAY7_DETAILED_NOISE_STRENGTH CLOUD_REV_DAY7_DUAL_SOFTENING \
++							  CLOUD_REV_DAY7_DUAL_BODY_G CLOUD_REV_DAY7_DUAL_BODY_STRENGTH
++screen.REVELATION_DAY_8.columns=2
++	screen.REVELATION_DAY_8 = CLOUD_REV_DAY8_ALTITUDE CLOUD_REV_DAY8_HEIGHT \
++							  CLOUD_REV_DAY8_COVERY CLOUD_REV_DAY8_DENSITY \
++							  CLOUD_REV_DAY8_WEATHER_LOW CLOUD_REV_DAY8_WEATHER_HIGH \
++							  CLOUD_REV_DAY8_SCALE CLOUD_REV_DAY8_WEATHER_STRENGTH \
++							  CLOUD_REV_DAY8_LOCAL_NOISE CLOUD_REV_DAY8_BASE_NOISE_SCALE \
++							  CLOUD_REV_DAY8_DETAIL_NOISE_SCALE CLOUD_REV_DAY8_COVERAGE_NOISE_OFFSET \
++							  CLOUD_REV_DAY8_DETAILED_NOISE_STRENGTH CLOUD_REV_DAY8_DUAL_SOFTENING \
++							  CLOUD_REV_DAY8_DUAL_BODY_G CLOUD_REV_DAY8_DUAL_BODY_STRENGTH
++screen.REVELATION_DAY_9.columns=2
++	screen.REVELATION_DAY_9 = CLOUD_REV_DAY9_ALTITUDE CLOUD_REV_DAY9_HEIGHT \
++							  CLOUD_REV_DAY9_COVERY CLOUD_REV_DAY9_DENSITY \
++							  CLOUD_REV_DAY9_WEATHER_LOW CLOUD_REV_DAY9_WEATHER_HIGH \
++							  CLOUD_REV_DAY9_SCALE CLOUD_REV_DAY9_WEATHER_STRENGTH \
++							  CLOUD_REV_DAY9_LOCAL_NOISE CLOUD_REV_DAY9_BASE_NOISE_SCALE \
++							  CLOUD_REV_DAY9_DETAIL_NOISE_SCALE CLOUD_REV_DAY9_COVERAGE_NOISE_OFFSET \
++							  CLOUD_REV_DAY9_DETAILED_NOISE_STRENGTH CLOUD_REV_DAY9_DUAL_SOFTENING \
++							  CLOUD_REV_DAY9_DUAL_BODY_G CLOUD_REV_DAY9_DUAL_BODY_STRENGTH
 +
 +	screen.LUT_SETTING = LUT_PROFILE \
 +						 LUT_STRENGTH \
@@ -5511,7 +6545,7 @@ index c726a67..c289a82 100644
  
  screen.MOD_SUPPORT = <empty> [DH_SETTING] <empty> [TACZ_SETTING]
  
-@@ -1200,7 +1393,7 @@ sliders=PT_VOXEL_RESOLUTION \
+@@ -1200,7 +1494,7 @@ sliders=PT_VOXEL_RESOLUTION \
  		PARALLAX_QUALITY PARALLAX_DEPTH PARALLAX_MAX_REFINEMENTS PARALLAX_SHADOW_QUALITY PT_DIFFUSE_SST_PARALLAX_QUALITY \
  		SKY_IMAGE_RESOLUTION EMISSIVENESS_BRIGHTNESS EMISSIVENESS_GAMMA SSS_QUALITY SSS_STRENGTH SSS_STRENGTH_OFFSET SSS_BRIGHTNESS TEXTURE_DEFAULT_POROSITY POROSITY_ABSORPTION SURFACE_WETNESS METAL_MINIMAL_F0 METAL_ORIGIN_COLOR METALMASK_STRENGTH \
  		WAVING_RANGE WAVING_SPEED GRASS_AMPLITUDE GRASS_DISTURBANCE LEAVES_AMPLITUDE \
@@ -5520,7 +6554,7 @@ index c726a67..c289a82 100644
  		wetnessHalflife drynessHalflife RAIN_SHADOW RAIN_WIND_X RAIN_WIND_Z RAIN_DISTURBANCE RAIN_SPLASH_SPEED RAIN_SPLASH_STRENGTH RAIN_SPLASH_SCALE \
  		HASHSTARS_BRIGHTNESS SKY_TEXTURE_BRIGHTNESS END_PLANET_CYCLE END_MANUAL_PLANET_CYCLE ACCRETIONDISC_ANGLE \
  		SELECTION_BOX_COLOR_R SELECTION_BOX_COLOR_G SELECTION_BOX_COLOR_B HAND_FOV \
-@@ -1210,9 +1403,11 @@ sliders=PT_VOXEL_RESOLUTION \
+@@ -1210,9 +1504,11 @@ sliders=PT_VOXEL_RESOLUTION \
  		CLOUD_QUALITY CLOUD_SPEED CLOUD_DETAILED_NOISE_STRENGTH CLOUD_BASE_NOISE_SCALE CLOUD_DETAILED_NOISE_SCALE CLOUD_BOTTOM_BRIGHTNESS CLOUD_OUTSCATTER_FACTOR CLOUD_COVERAGE_NOISE_OFFSET \
  		CLOUD_CLEAR_ALTITUDE CLOUD_CLEAR_THICKNESS CLOUD_CLEAR_COVERY CLOUD_CLEAR_DENSITY CLOUD_CLEAR_SUNLIGHTING CLOUD_CLEAR_SKYLIGHTING CLOUD_CLEAR_SCALE \
  		CLOUD_RAIN_ALTITUDE  CLOUD_RAIN_THICKNESS  CLOUD_RAIN_COVERY  CLOUD_RAIN_DENSITY  CLOUD_RAIN_SUNLIGHTING  CLOUD_RAIN_SKYLIGHTING  CLOUD_RAIN_SCALE \
@@ -5533,11 +6567,13 @@ index c726a67..c289a82 100644
  		LANDSCATTERING_DISTANCE LANDSCATTERING_STRENGTH LANDSCATTERING_SHADOW_QUALITY \
  		WATERFOG_DENSITY CAVE_FOG_BRIGHTNESS NETHERFOG_DENSITY \
  		TAA_BLENDWEIGHT TAA_AGGRESSION TAA_DEPTH_COMPARE_THRESHOLD \
-@@ -1221,7 +1416,8 @@ sliders=PT_VOXEL_RESOLUTION \
+@@ -1220,8 +1516,9 @@ sliders=PT_VOXEL_RESOLUTION \
+ 		DOF_BLUR DOF_QUALITY DOF_COCSPREAD_QUALITY DOF_MAX_COC DOF_CATSEYE_STRENGTH DOF_CATSEYE_MIDPOINT CAMERA_FOCAL_POINT DOF_DEPTH_SMMOOTH_HALFLIFE \
  		EV_VALUE AE_OFFSET AE_CURVE EXPOSURE_TIME LUMINANCE_WEIGHT_STRENGTH \
  		MOTION_BLUR_QUALITY MOTION_BLUR_SUTTER_ANGLE MOTION_BLUR_SUTTER_SPEED \
- 		VIGNETTE_FALLOFF VIGNETTE_ROUNDNESS \
+-		VIGNETTE_FALLOFF VIGNETTE_ROUNDNESS \
 -		BLOOM_AMOUNT NETHER_END_BLOOM_BOOST GLARE_BRIGHTNESS FLARE_BRIGHTNESS \
++		VIGNETTE_FALLOFF VIGNETTE_ROUNDNESS FILM_GRAIN_INTENSITY FILM_GRAIN_SIZE \
 +		BLOOM_AMOUNT NETHER_END_BLOOM_BOOST GLARE_BRIGHTNESS FLARE_BRIGHTNESS LUT_STRENGTH TIME_GRADE_STRENGTH BIOME_GRADING_STRENGTH \
 +		KER_TEX_SIZE FFT_SIZE KERNEL_FRACTION CONV_BLOOM_STRENGTH CONV_BLOOM_STRENGTH_NETHER CONV_BLOOM_STRENGTH_END BLOOM_THRESHOLD BLOOM_KNEE_MULT EXPOSURE_BLOOM_TRANSITION \
  		AGX_EV AGX_HDR_EV AGX_HDR_MIDGREY HIGHLIGHT_CURVE SHADOW_CURVE WHITE_POINT BLACK_POINT MIDTONE_HUE MIDTONE_STRENGTH HIGHLIGHT_HUE HIGHLIGHT_STRENGTH SHADOW_HUE SHADOW_STRENGTH SATURATION GAMMA \
