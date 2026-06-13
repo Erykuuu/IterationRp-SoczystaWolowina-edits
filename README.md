@@ -1,6 +1,11 @@
-# IterationRP Edit - V2.0 Patch
-
+# IterationRP Edit - V2.2 Patch
+For my configuration settings, download txt file and place in same folder as the shaders
 This repository provides a patch for the **IterationRP Alpha 0.8.23** shader pack. Due to licensing, the original shader code cannot be distributed directly. Users must own the original shader zip to apply this edit.
+## New in v2.2
+- **better moon and night sky textures**
+- **dynamic moonphase lighting intesity during night**
+- **SEUS inspired preset tonemaping for opendrt**
+- **ability to make custom preset for opendrt**
 ## New in V2.1
 - **suport for ocean physics and physics mod**
 ## New in V2.0
@@ -84,7 +89,7 @@ python shader-patch.py "iterationRP Alpha 0.8.18.zip" "ITRPeditV1.11.diff" "ITRP
 ```
 or for the V1.12+ using 0.8.22+
 ```bash
-python shader-patch.py "iterationRP Alpha (version).zip" "ITRPeditV(version.diff" "ITRPedit_V(version).zip"
+python shader-patch.py "iterationRP Alpha (version).zip" "ITRPeditV(version).diff" "ITRPedit_V(version).zip"
 ```
 
 5. The patched shader pack will be generated as `ITRPedit_V1.11.zip`/`ITRPedit_V(version).zip`. You can now move this into your Minecraft `shaderpacks` folder.
