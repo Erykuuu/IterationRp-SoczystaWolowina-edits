@@ -1,6 +1,8 @@
-# IterationRP Edit - V2.2 Patch
+# IterationRP Edit - V2.3 Patch
 For my configuration settings, download txt file and place in same folder as the shaders
 This repository provides a patch for the **IterationRP Alpha 0.8.23** shader pack. Due to licensing, the original shader code cannot be distributed directly. Users must own the original shader zip to apply this edit.
+## New in v2.2
+- **performance optimazations** Should gain ~15 fps from previous version and should be stable and dont go below 60fps while using fsr balanced on 1440p resolution+
 ## New in v2.2
 - **better moon and night sky textures**
 - **dynamic moonphase lighting intesity during night**
